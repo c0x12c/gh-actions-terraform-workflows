@@ -2,9 +2,6 @@ name: "Generalized Terraform Apply Workflow"
 description: "A reusable action for running Terraform plan in any environment"
 
 inputs:
-  app-id:
-    description: "GitHub App ID"
-    required: true
   aws-region:
     description: "AWS region to use"
     required: true
@@ -13,9 +10,6 @@ inputs:
     required: true
   environment:
     description: "The environment to use (e.g., dev, prod)"
-    required: true
-  private-key:
-    description: "GitHub App Private Key"
     required: true
   python-version:
     description: "Python version to use"
