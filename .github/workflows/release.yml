@@ -33,4 +33,4 @@ jobs:
           changelog: CHANGELOG.md
           title: $version
           branch: 'master|v[0-9]+'
-          token: ${{ secrets.GITHUB_TOKEN }}Ø
+          token: ${{ steps.github-app-token.outputs.token }}
