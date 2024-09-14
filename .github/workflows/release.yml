@@ -1,7 +1,7 @@
 name: Release
 
 permissions:
-  contents: write
+  contents: read
 
 on:
   push:
@@ -10,13 +10,15 @@ on:
 
 defaults:
   run:
-    shell: bash
+    shell: bash --noprofile --norc -CeEuxo pipefail {0}
 
 jobs:
   create-release:
-    if: github.repository_owner == 'c0x12c'
+    if: github.repository_owner == 'taiki-e'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 60
+    permissions:
+      contents: write
 
     steps:
       - name: Create GitHub App Token
@@ -25,6 +27,12 @@ jobs:
         with:
           app-id: ${{ vars.APP_ID }}
           private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.github-app-token.outputs.token }}
+          ref: ${{ github.head_ref }}
 
       - uses: taiki-e/create-gh-release-action@v1
         with:
