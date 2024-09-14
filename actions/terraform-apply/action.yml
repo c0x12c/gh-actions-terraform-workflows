@@ -15,6 +15,9 @@ inputs:
     description: "Python version to use"
     required: false
     default: "3.12"
+  slack_webhook_url:
+    description: "The Slack Webhook URL for posting deployment notifications"
+    required: true
   terraform_version:
     description: "Terraform version to use"
     required: false
@@ -102,5 +105,5 @@ runs:
     - name: Send Notification to Slack
       uses: c0x12c/gh-actions-slack-notify@v0.1.2
       with:
-        webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}
+        webhook_url: ${{ inputs.slack_webhook_url }}
         title: ':rocket: *${{ github.event.repository.name }} - Applied Terraform to ${{ inputs.environment }}*'
