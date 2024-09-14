@@ -81,11 +81,13 @@ runs:
 
     - name: Terraform Init
       id: init
+      shell: bash
       run: terraform init
       working-directory: ${{ inputs.working-dir }}
 
     - name: Terraform Apply
       id: tf_apply
+      shell: bash
       run: terraform apply -input=false -auto-approve -refresh=false
       working-directory: ${{ env.WORKING_DIR }}
 
