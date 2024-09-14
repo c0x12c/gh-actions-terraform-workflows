@@ -1,4 +1,5 @@
 name: Release
+run-name: Create a new release on GitHub
 
 permissions:
   contents: read
