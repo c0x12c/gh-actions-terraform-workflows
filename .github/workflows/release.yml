@@ -1,7 +1,7 @@
 name: Release
 
 permissions:
-  contents: read
+  contents: write
 
 on:
   push:
@@ -16,9 +16,7 @@ jobs:
   create-release:
     if: github.repository_owner == 'c0x12c'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    permissions:
-      contents: write
+    timeout-minutes: 5
 
     steps:
       - name: Create GitHub App Token
