@@ -1,0 +1,109 @@
+name: "Generalized Terraform Apply Workflow"
+description: "A reusable action for running Terraform plan in any environment"
+
+inputs:
+  aws_region:
+    description: "AWS region to use"
+    required: true
+  aws_role:
+    description: "The AWS role to assume for the environment"
+    required: true
+  environment:
+    description: "The environment to use (e.g., dev, prod)"
+    required: true
+  python_version:
+    description: "Python version to use"
+    required: false
+    default: "3.12"
+  slack_webhook_url:
+    description: "The Slack Webhook URL for posting deployment notifications"
+    required: true
+  terraform_version:
+    description: "Terraform version to use"
+    required: false
+    default: "1.8.4"
+  working_dir:
+    description: "The working directory for Terraform files"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ inputs.terraform_version }}
+
+    - name: Config Terraform plugin cache
+      shell: bash
+      run: |
+        echo 'plugin_cache_dir="$HOME/.terraform.d/plugin-cache"' >~/.terraformrc
+        mkdir --parents ~/.terraform.d/plugin-cache
+
+    - name: Cache Terraform
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.terraform.d/plugin-cache
+        key: ${{ runner.os }}-terraform-${{ hashFiles('**/.terraform.lock.hcl') }}
+        restore-keys: |
+          ${{ runner.os }}-terraform-
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ inputs.python_version }}
+
+    - name: Install pipx
+      shell: bash
+      run: |
+        python -m pip install --user pipx
+        echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+    - name: Install git-secret-protector
+      shell: bash
+      run: |
+        pipx install git-secret-protector
+
+    - name: Configure AWS Credentials for ${{ inputs.environment }}
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.aws_role }}
+        role-session-name: gh-actions
+        aws-region: ${{ inputs.aws_region }}
+
+    - name: Pull AES key and IV for ${{ inputs.environment }}
+      shell: bash
+      run: |
+        git-secret-protector pull-aes-key app-${{ inputs.environment }}
+
+    - name: Decrypt ${{ inputs.environment }} secrets
+      shell: bash
+      run: |
+        git-secret-protector decrypt-files app-${{ inputs.environment }}
+
+    - name: Terraform Init
+      id: init
+      shell: bash
+      run: terraform init
+      working-directory: ${{ inputs.working_dir }}
+
+    - name: Terraform Apply
+      id: tf_apply
+      shell: bash
+      run: terraform apply -input=false -auto-approve -refresh=false
+      working-directory: ${{ inputs.working_dir }}
+
+    - name: Verify Terraform Apply Is Success
+      shell: bash
+      run: |
+        if [[ "${{ steps.tf_apply.outputs.failure-reason }}" != "" ]]; then
+          echo "::error:: Terraform apply failed"
+          exit 1
+        fi
+
+    - name: Send Notification to Slack
+      uses: c0x12c/gh-actions-slack-notify@v0.1.2
+      with:
+        webhook_url: ${{ inputs.slack_webhook_url }}
+        title: ':rocket: *${{ github.event.repository.name }} - Applied Terraform to ${{ inputs.environment }}*'
