@@ -8,4 +8,4 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
-- Initial release
+- Initial release with two workflows: `terraform-plan` and `terraform-apply`.

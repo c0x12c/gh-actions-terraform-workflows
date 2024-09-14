@@ -107,7 +107,6 @@ runs:
 
     - name: Terraform Init
       id: init
-      shell: bash
       run: terraform init
       working-directory: ${{ inputs.working-dir }}
 
@@ -119,7 +118,6 @@ runs:
 
     - name: Terraform Plan
       id: plan
-      shell: bash
       run: |
         terraform plan -input=false -no-color -lock=false -refresh=false -out=/tmp/plan.tmp
         terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
@@ -128,14 +126,12 @@ runs:
       working-directory: ${{ inputs.working-dir }}
 
     - name: Clean git-secret-protector stage files for ${{ inputs.environment }}
-      shell: bash
       run: |
         git-secret-protector encrypt-files app-${{ inputs.environment }}
         rm -rf .git_secret_protector
 
     - name: Check for Plan Failure
       if: steps.plan.outputs.exitcode == 1
-      shell: bash
       run: |
         echo "::error:: Terraform plan failed"
         exit 1
