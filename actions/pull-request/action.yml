@@ -82,19 +82,19 @@ runs:
       run: |
         pipx install git-secret-protector
 
-    - name: Configure AWS Credentials for ${{ toUpper(inputs.environment) }}
+    - name: Configure AWS Credentials for ${{ inputs.environment }}
       uses: aws-actions/configure-aws-credentials@v4
       with:
         role-to-assume: ${{ inputs.aws-role }}
         role-session-name: gh-actions
         aws-region: ${{ inputs.aws-region }}
 
-    - name: Pull AES key and IV for ${{ toUpper(inputs.environment) }}
+    - name: Pull AES key and IV for ${{ inputs.environment }}
       shell: bash
       run: |
         git-secret-protector pull-aes-key app-${{ inputs.environment }}
 
-    - name: Decrypt ${{ toUpper(inputs.environment) }} secrets
+    - name: Decrypt ${{ inputs.environment }} secrets
       shell: bash
       run: |
         git-secret-protector decrypt-files app-${{ inputs.environment }}
@@ -127,7 +127,7 @@ runs:
       continue-on-error: true
       working-directory: ${{ inputs.working-dir }}
 
-    - name: Clean git-secret-protector stage files for ${{ toUpper(inputs.environment) }}
+    - name: Clean git-secret-protector stage files for ${{ inputs.environment }}
       shell: bash
       run: |
         git-secret-protector encrypt-files app-${{ inputs.environment }}
@@ -148,7 +148,7 @@ runs:
           const fs = require('fs')
           const plan = fs.readFileSync('/tmp/plan.out', 'utf8')
           fs.unlinkSync('/tmp/plan.out')
-          const output = `#### Environment: ${{ toUpper(inputs.environment) }}
+          const output = `#### Environment: ${{ inputs.environment }}.toUpperCase()
           #### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
           #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
           #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
