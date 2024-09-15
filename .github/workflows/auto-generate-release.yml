@@ -1,5 +1,5 @@
-name: Release
-run-name: Create a new release on GitHub
+name: Auto Generate Release
+run-name: Automatically generate a new release on GitHub
 
 permissions:
   contents: read

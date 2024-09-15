@@ -1,4 +1,4 @@
-name: Create Minor Release
+name: Update Patch Version Tag
 
 on:
   workflow_dispatch:
@@ -31,6 +31,6 @@ jobs:
           git config --global user.email "github-actions@github.com"
           git config --global user.name "github-actions"
 
-          ./tools/create_release.sh minor
+          ./tools/create_release.sh patch
         env:
           GITHUB_TOKEN: ${{ steps.github-app-token.outputs.token }}
