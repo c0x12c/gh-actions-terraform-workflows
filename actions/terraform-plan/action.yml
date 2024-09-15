@@ -101,7 +101,8 @@ runs:
           const fs = require('fs')
           const plan = fs.readFileSync('/tmp/plan.out', 'utf8')
           fs.unlinkSync('/tmp/plan.out')
-          const output = `#### Environment: ${{ inputs.environment }}.toUpperCase()
+          const environment = '${{ inputs.environment }}'.toUpperCase()
+          const output = `#### Environment: ${environment}
           #### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
           #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
           #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
