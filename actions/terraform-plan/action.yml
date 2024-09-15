@@ -49,22 +49,6 @@ runs:
         restore-keys: |
           ${{ runner.os }}-terraform-
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ inputs.python_version }}
-
-    - name: Install pipx
-      shell: bash
-      run: |
-        python -m pip install --user pipx
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-    - name: Install git-secret-protector
-      shell: bash
-      run: |
-        pipx install git-secret-protector
-
     - name: Configure AWS Credentials for ${{ inputs.environment }}
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -72,21 +56,10 @@ runs:
         role-session-name: gh-actions
         aws-region: ${{ inputs.aws_region }}
 
-    - name: Pull AES key and IV for ${{ inputs.environment }}
-      shell: bash
-      run: |
-        git-secret-protector pull-aes-key app-${{ inputs.environment }}
-
-    - name: Decrypt ${{ inputs.environment }} secrets
-      shell: bash
-      run: |
-        git-secret-protector decrypt-files app-${{ inputs.environment }}
-
-    - name: Terraform fmt
-      id: fmt
-      shell: bash
-      run: terraform fmt -check -diff
-      working-directory: ${{ inputs.working_dir }}
+    - name: Decrypt Secrets
+      uses: c0x12c/gh-actions-git-secret-protector@v1
+      with:
+        filter: ${{ inputs.secret_filter }}
 
     - name: Terraform Init
       id: init
@@ -109,12 +82,6 @@ runs:
         rm -f /tmp/plan.tmp
       continue-on-error: true
       working-directory: ${{ inputs.working_dir }}
-
-    - name: Clean git-secret-protector stage files for ${{ inputs.environment }}
-      shell: bash
-      run: |
-        git-secret-protector encrypt-files app-${{ inputs.environment }}
-        rm -rf .git_secret_protector
 
     - name: Check for Plan Failure
       if: steps.plan.outputs.exitcode == 1
