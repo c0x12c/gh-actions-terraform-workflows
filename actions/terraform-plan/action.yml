@@ -18,6 +18,9 @@ inputs:
     description: "Python version to use"
     required: false
     default: "3.12"
+  secret_filter:
+    description: "The filter name to use with git-secret-protector"
+    required: true
   terraform_version:
     description: "Terraform version to use"
     required: false

@@ -16,7 +16,7 @@ inputs:
     required: false
     default: "3.12"
   secret_filter:
-    description: "The Git Secret Protector filter for secrets decryption"
+    description: "The filter name to use with git-secret-protector"
     required: true
   slack_webhook_url:
     description: "The Slack Webhook URL for posting deployment notifications"
