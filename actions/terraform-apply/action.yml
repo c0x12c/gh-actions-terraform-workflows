@@ -15,6 +15,9 @@ inputs:
     description: "Python version to use"
     required: false
     default: "3.12"
+  secret_filter:
+    description: "The filter name to use with git-secret-protector"
+    required: true
   slack_webhook_url:
     description: "The Slack Webhook URL for posting deployment notifications"
     required: true
@@ -49,22 +52,6 @@ runs:
         restore-keys: |
           ${{ runner.os }}-terraform-
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ inputs.python_version }}
-
-    - name: Install pipx
-      shell: bash
-      run: |
-        python -m pip install --user pipx
-        echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-    - name: Install git-secret-protector
-      shell: bash
-      run: |
-        pipx install git-secret-protector
-
     - name: Configure AWS Credentials for ${{ inputs.environment }}
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -72,15 +59,10 @@ runs:
         role-session-name: gh-actions
         aws-region: ${{ inputs.aws_region }}
 
-    - name: Pull AES key and IV for ${{ inputs.environment }}
-      shell: bash
-      run: |
-        git-secret-protector pull-aes-key app-${{ inputs.environment }}
-
-    - name: Decrypt ${{ inputs.environment }} secrets
-      shell: bash
-      run: |
-        git-secret-protector decrypt-files app-${{ inputs.environment }}
+    - name: Decrypt Secrets
+      uses: c0x12c/gh-actions-git-secret-protector@v1.0.4
+      with:
+        filter: ${{ inputs.secret_filter }}
 
     - name: Terraform Init
       id: init
