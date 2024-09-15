@@ -1,17 +1,5 @@
 version: 2
 updates:
-  - package-ecosystem: "terraform"
-    directories:
-      - "**"
-    schedule:
-      interval: "weekly"
-    commit-message:
-      prefix: 'deps-terraform:'
-    groups:
-      terraform:
-        patterns:
-          - '*'
-
   - package-ecosystem: github-actions
     directory: /
     schedule:
