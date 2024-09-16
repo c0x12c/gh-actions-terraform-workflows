@@ -64,6 +64,12 @@ runs:
       with:
         filter: ${{ inputs.secret_filter }}
 
+    - name: Debugging
+      shell: bash
+      run: |
+        ls -la
+        cat .git_secret_protector/logs/git_secret_protector.log
+
     - name: Terraform Init
       id: init
       shell: bash
