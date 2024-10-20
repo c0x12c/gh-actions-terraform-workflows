@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v0.5.1] - 2024-10-20
+
+### Changed
+- Use `gh-actions-git-secret-protector@v1`.
+
 ## [v0.5.0] - 2024-10-07
 
 ### Changed
