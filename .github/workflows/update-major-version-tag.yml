@@ -1,4 +1,4 @@
-name: Update Minor Version Tag
+name: Update Major Version Tag
 
 on:
   workflow_dispatch:
