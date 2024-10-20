@@ -62,7 +62,7 @@ runs:
 
     - name: Decrypt Secrets
       if: ${{ inputs.secret_filter != '' }}
-      uses: c0x12c/gh-actions-git-secret-protector@v1.0.4
+      uses: c0x12c/gh-actions-git-secret-protector@v1
       with:
         filter: ${{ inputs.secret_filter }}
 
