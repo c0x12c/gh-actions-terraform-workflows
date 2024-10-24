@@ -22,7 +22,7 @@ Here are the inputs the workflow requires:
 ```
 steps:
   - name: Run Terraform Apply
-    uses: Generalized-Terraform-Apply-Workflow@v1
+    uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-apply@v1
     with:
       aws_region: 'us-east-1'
       aws_role: 'arn:aws:iam::123456789012:role/my-role'

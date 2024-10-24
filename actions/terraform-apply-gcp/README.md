@@ -23,7 +23,7 @@ Here are the inputs the workflow requires:
 ```
 steps:
   - name: Run Terraform Apply
-    uses: Generalized-Terraform-Apply-Workflow@v1
+    uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-apply-gcp@v1
     with:
       gcp_project_id: 'my-project-id'
       gcp_service_account: 'my-service-account
