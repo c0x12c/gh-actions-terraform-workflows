@@ -1,0 +1,98 @@
+name: "Generalized Terraform Apply Workflow"
+description: "A reusable action for running Terraform plan in any environment"
+
+inputs:
+  gcp_project_id:
+    description: "GCP Project ID to use"
+    required: true
+  gcp_service_account:
+    description: "The GCP Service Account to use for authentication"
+    required: true
+  gcp_workload_identity_provider:
+    description: "The GCP Workload Identity Provider to use"
+    required: true
+  environment:
+    description: "The environment to use (e.g., dev, prod)"
+    required: true
+  python_version:
+    description: "Python version to use"
+    required: false
+    default: "3.12"
+  secret_filter:
+    description: "The filter name to use with git-secret-protector"
+    required: false
+    default: ""
+  slack_webhook_url:
+    description: "The Slack Webhook URL for posting deployment notifications"
+    required: true
+  terraform_version:
+    description: "Terraform version to use"
+    required: false
+    default: "1.8.4"
+  working_dir:
+    description: "The working directory for Terraform files"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ inputs.terraform_version }}
+
+    - name: Config Terraform plugin cache
+      shell: bash
+      run: |
+        echo 'plugin_cache_dir="$HOME/.terraform.d/plugin-cache"' >~/.terraformrc
+        mkdir --parents ~/.terraform.d/plugin-cache
+
+    - name: Cache Terraform
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.terraform.d/plugin-cache
+        key: ${{ runner.os }}-terraform-${{ hashFiles('**/.terraform.lock.hcl') }}
+        restore-keys: |
+          ${{ runner.os }}-terraform-
+
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        create_credentials_file: true
+        project_id: ${{ inputs.gcp_project_id }}
+        service_account: ${{ inputs.gcp_service_account }}
+        workload_identity_provider: ${{ inputs.gcp_workload_identity_provider }}
+
+    - name: Decrypt Secrets
+      if: ${{ inputs.secret_filter != '' }}
+      uses: c0x12c/gh-actions-git-secret-protector@v1
+      with:
+        filter: ${{ inputs.secret_filter }}
+
+    - name: Terraform Init
+      id: init
+      shell: bash
+      run: terraform init
+      working-directory: ${{ inputs.working_dir }}
+
+    - name: Terraform Apply
+      id: tf_apply
+      shell: bash
+      run: terraform apply -input=false -auto-approve -refresh=false
+      working-directory: ${{ inputs.working_dir }}
+
+    - name: Verify Terraform Apply Is Success
+      shell: bash
+      run: |
+        if [[ "${{ steps.tf_apply.outputs.failure-reason }}" != "" ]]; then
+          echo "::error:: Terraform apply failed"
+          exit 1
+        fi
+
+    - name: Send Notification to Slack
+      uses: c0x12c/gh-actions-slack-notify@v0.1.2
+      with:
+        webhook_url: ${{ inputs.slack_webhook_url }}
+        title: ':rocket: *${{ github.event.repository.name }} - Applied Terraform to ${{ inputs.environment }}*'
