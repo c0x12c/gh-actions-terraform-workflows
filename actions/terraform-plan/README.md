@@ -1,6 +1,6 @@
-# Generalized Terraform Plan Workflow
+# Generalized Terraform Plan Workflow on AWS
 
-This GitHub Workflow action is designed to create a reusable method for running Terraform plan within any environment. It's capable of configuring AWS credentials and posts comments to pull requests when appropriate.
+This GitHub Workflow action is designed to create a reusable method for running Terraform plan within any AWS environment. It's capable of configuring AWS credentials and posts comments to pull requests when appropriate.
 
 ## Inputs
 

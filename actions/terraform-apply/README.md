@@ -1,21 +1,21 @@
 # Generalized Terraform Apply GitHub Workflow Action
 
-This GitHub workflow action is a reusable Terraform apply script designed to work in any environment. After it performs the apply, it sends a notification to Slack.
+This GitHub workflow action is designed to create a reusable method for running Terraform Apply within any AWS environment. After it performs the apply, it sends a notification to Slack.
 
 ## Inputs
 
 Here are the inputs the workflow requires:
 
-| Input Name          | Description                                               | Required | Default |
-|---------------------|-----------------------------------------------------------|----------|---------|
-| `aws_region`        | AWS region to use                                         | `true`   |         |
-| `aws_role`          | The AWS role to assume for the environment                | `true`   |         |
-| `environment`       | The environment to use (e.g., `dev`, `prod`)              | `true`   |         |
-| `python_version`    | Python version to use                                     | `false`  | `3.12`  |
-| `secret_filter`     | The filter name to use with git-secret-protector          | `false`  | `''`    |
-| `slack_webhook_url` | The Slack Webhook URL for posting deployment notifications| `true`   |         |
-| `terraform_version` | Terraform version to use                                  | `false`  | `1.8.4` |
-| `working_dir`       | The working directory for Terraform files                 | `true`   |         |
+| Input Name          | Description                                                | Required | Default |
+|---------------------|------------------------------------------------------------|----------|---------|
+| `aws_region`        | AWS region to use                                          | `true`   |         |
+| `aws_role`          | The AWS role to assume for the environment                 | `true`   |         |
+| `environment`       | The environment to use (e.g., `dev`, `prod`)               | `true`   |         |
+| `python_version`    | Python version to use                                      | `false`  | `3.12`  |
+| `secret_filter`     | The filter name to use with git-secret-protector           | `false`  | `''`    |
+| `slack_webhook_url` | The Slack Webhook URL for posting deployment notifications | `true`   |         |
+| `terraform_version` | Terraform version to use                                   | `false`  | `1.8.4` |
+| `working_dir`       | The working directory for Terraform files                  | `true`   |         |
 
 ## Usage
 
