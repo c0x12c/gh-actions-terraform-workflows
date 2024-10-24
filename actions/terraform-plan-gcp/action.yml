@@ -1,0 +1,141 @@
+name: "Generalized Terraform Plan Workflow on GCP"
+description: "A reusable action for running Terraform plan in any environment"
+
+inputs:
+  gcp_project_id:
+    description: "GCP Project ID to use"
+    required: true
+  gcp_service_account:
+    description: "The GCP Service Account to use for authentication"
+    required: true
+  gcp_workload_identity_provider:
+    description: "The GCP Workload Identity Provider to use"
+    required: true
+  environment:
+    description: "The environment to use (e.g., dev, prod)"
+    required: true
+  github_token:
+    description: "GitHub Token required to post comments to PR"
+    required: true
+  python_version:
+    description: "Python version to use"
+    required: false
+    default: "3.12"
+  secret_filter:
+    description: "The filter name to use with git-secret-protector"
+    required: false
+    default: ""
+  terraform_version:
+    description: "Terraform version to use"
+    required: false
+    default: "1.8.4"
+  working_dir:
+    description: "The working directory for Terraform files"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: ${{ inputs.terraform_version }}
+
+    - name: Config Terraform plugin cache
+      shell: bash
+      run: |
+        echo 'plugin_cache_dir="$HOME/.terraform.d/plugin-cache"' >~/.terraformrc
+        mkdir --parents ~/.terraform.d/plugin-cache
+
+    - name: Cache Terraform
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.terraform.d/plugin-cache
+        key: ${{ runner.os }}-terraform-${{ hashFiles('**/.terraform.lock.hcl') }}
+        restore-keys: |
+          ${{ runner.os }}-terraform-
+
+    - name: Google Auth
+      id: auth
+      uses: google-github-actions/auth@v2
+      with:
+        create_credentials_file: true
+        project_id: ${{ inputs.gcp_project_id }}
+        service_account: ${{ inputs.gcp_service_account }}
+        workload_identity_provider: ${{ inputs.gcp_workload_identity_provider }}
+
+    - name: Decrypt Secrets
+      if: ${{ inputs.secret_filter != '' }}
+      uses: c0x12c/gh-actions-git-secret-protector@v1
+      with:
+        filter: ${{ inputs.secret_filter }}
+
+    - name: Terraform Init
+      id: init
+      shell: bash
+      run: terraform init
+      working-directory: ${{ inputs.working_dir }}
+
+    - name: Terraform Validate
+      id: validate
+      shell: bash
+      run: terraform validate -no-color
+      working-directory: ${{ inputs.working_dir }}
+
+    - name: Terraform Plan
+      id: plan
+      shell: bash
+      run: |
+        terraform plan -input=false -no-color -lock=false -refresh=false -out=/tmp/plan.tmp
+        terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
+        rm -f /tmp/plan.tmp
+      continue-on-error: true
+      working-directory: ${{ inputs.working_dir }}
+
+    - name: Check for Plan Failure
+      if: steps.plan.outputs.exitcode == 1
+      shell: bash
+      run: |
+        echo "::error:: Terraform plan failed"
+        exit 1
+
+    - uses: actions/github-script@v7
+      if: github.event_name == 'pull_request'
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const fs = require('fs')
+          const plan = fs.readFileSync('/tmp/plan.out', 'utf8')
+          fs.unlinkSync('/tmp/plan.out')
+          const environment = '${{ inputs.environment }}'.toUpperCase()
+          const output = `#### Environment: ${environment}
+          #### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+          <details><summary>Validation Output</summary>
+
+          \`\`\`\n
+          ${{ steps.validate.outputs.stdout }}
+          \`\`\`
+
+          </details>
+
+          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+
+          <details><summary>Show Plan</summary>
+
+          \`\`\`\n
+          ${plan}
+          \`\`\`
+
+          </details>
+
+          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          })
