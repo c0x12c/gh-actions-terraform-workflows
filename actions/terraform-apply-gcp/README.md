@@ -26,7 +26,7 @@ steps:
     uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-apply-gcp@v1
     with:
       gcp_project_id: 'my-project-id'
-      gcp_service_account: 'my-service-account
+      gcp_service_account: 'my-service-account'
       gcp_workload_identity_provider: 'my-workload-identity-provider'
       environment: 'prod'
       python_version: '3.9'
