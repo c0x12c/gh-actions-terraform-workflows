@@ -83,6 +83,14 @@ runs:
       run: terraform apply -input=false -auto-approve -refresh=false
       working-directory: ${{ inputs.working_dir }}
 
+    - name: Send a Notification to Slack on failure
+      if: steps.tf_apply.outputs.exitcode == 1
+      uses: c0x12c/gh-actions-slack-notify@v0.1.2
+      with:
+        webhook_url: ${{ inputs.slack_webhook_url }}
+        title: ':skull: *${{ github.event.repository.name }} - Terraform applied FAILED in ${{ inputs.environment }}*'
+
+
     - name: Verify Terraform Apply Is Success
       shell: bash
       run: |
