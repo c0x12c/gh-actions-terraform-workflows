@@ -90,7 +90,6 @@ runs:
         webhook_url: ${{ inputs.slack_webhook_url }}
         title: ':skull: *${{ github.event.repository.name }} - Terraform applied FAILED in ${{ inputs.environment }}*'
 
-
     - name: Verify Terraform Apply Is Success
       shell: bash
       run: |
