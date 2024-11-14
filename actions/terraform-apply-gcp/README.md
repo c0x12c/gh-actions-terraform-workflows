@@ -14,7 +14,7 @@ Here are the inputs the workflow requires:
 | `environment`                    | The environment to use (e.g., `dev`, `prod`)               | `true`   |         |
 | `python_version`                 | Python version to use                                      | `false`  | `3.12`  |
 | `secret_filter`                  | The filter name to use with git-secret-protector           | `false`  | `''`    |
-| `slack_webhook_url`              | The Slack Webhook URL for posting deployment notifications | `true`   |         |
+| `slack_webhook_url`              | The Slack Webhook URL for posting deployment notifications | `false`  | `''`    |
 | `terraform_version`              | Terraform version to use                                   | `false`  | `1.8.4` |
 | `working_dir`                    | The working directory for Terraform files                  | `true`   |         |
 
