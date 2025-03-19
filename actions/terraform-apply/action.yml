@@ -76,7 +76,7 @@ runs:
     - name: Terraform Apply
       id: tf_apply
       shell: bash
-      run: terraform apply -input=false -auto-approve -refresh=false
+      run: terraform apply -target=module.qdrant -auto-approve -refresh=false
       working-directory: ${{ inputs.working_dir }}
 
     - name: Send a Notification to Slack on failure
