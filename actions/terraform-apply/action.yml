@@ -67,6 +67,10 @@ runs:
       with:
         filter: ${{ inputs.secret_filter }}
 
+    - name: "Helm Install for Service API"
+      run: |
+        helm repo add qdrant https://x-access-token:${{ steps.github-app-token.outputs.token }}@raw.githubusercontent.com/firebirdai/infra-helm/master/hosting
+
     - name: Terraform Init
       id: init
       shell: bash
