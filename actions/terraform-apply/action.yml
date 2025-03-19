@@ -70,7 +70,7 @@ runs:
     - name: Configure Kubernetes client
       uses: silverlyra/setup-aws-eks@v0.1
       with:
-        cluster: atrix-eks-prod-az
+        cluster: "atrix-eks-prod-az"
 
     - name: "Helm Install for Service API"
       shell: bash
