@@ -73,8 +73,21 @@ runs:
       run: terraform init
       working-directory: ${{ inputs.working_dir }}
 
-    - name: Terraform Apply
-      id: tf_apply
+    - name: Terraform Apply (Plan Stage)
+      id: tf_plan
+      shell: bash
+      run: terraform apply -input=false -refresh=false
+      working-directory: ${{ inputs.working_dir }}
+
+    - name: Wait for Manual Approval
+      uses: trstringer/manual-approval@v1
+      with:
+        secret: ${{ inputs.token }}
+        approvers: ${{ inputs.approvers }}
+        minimum-approvals: ${{ inputs.minimum_approvals }}
+
+    - name: Terraform Apply (Auto-Approve Stage)
+      id: tf_auto_apply
       shell: bash
       run: terraform apply -input=false -auto-approve -refresh=false
       working-directory: ${{ inputs.working_dir }}
