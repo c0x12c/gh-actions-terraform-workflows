@@ -30,6 +30,15 @@ inputs:
   working_dir:
     description: "The working directory for Terraform files"
     required: true
+  token:
+    description: "The GitHub token for manual approval"
+    required: true
+  approvers:
+    description: "The GitHub users who can approve the deployment"
+    required: true
+  minimum_approvals:
+    description: "The minimum number of approvals required for deployment"
+    required: true
 
 runs:
   using: "composite"
@@ -73,8 +82,21 @@ runs:
       run: terraform init
       working-directory: ${{ inputs.working_dir }}
 
-    - name: Terraform Apply
-      id: tf_apply
+    - name: Terraform Apply (Plan Stage)
+      id: tf_plan
+      shell: bash
+      run: terraform apply -input=false -refresh=false
+      working-directory: ${{ inputs.working_dir }}
+
+    - name: Wait for Manual Approval
+      uses: trstringer/manual-approval@v1
+      with:
+        secret: ${{ inputs.token }}
+        approvers: ${{ inputs.approvers }}
+        minimum-approvals: ${{ inputs.minimum_approvals }}
+
+    - name: Terraform Apply (Auto-Approve Stage)
+      id: tf_auto_apply
       shell: bash
       run: terraform apply -input=false -auto-approve -refresh=false
       working-directory: ${{ inputs.working_dir }}

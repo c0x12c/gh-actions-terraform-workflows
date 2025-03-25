@@ -32,4 +32,7 @@ steps:
       slack_webhook_url: 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
       terraform_version: '0.14.5'
       working_dir: './terraform'
+      token: 'github-app-token'
+      approvers: 'user1,user2'
+      minimum_approvals: 1
 ```
