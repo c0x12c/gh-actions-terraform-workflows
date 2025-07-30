@@ -110,8 +110,8 @@ runs:
           #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
           <details><summary>Validation Output</summary>
 
-          \`\`\`\n
-          ${{ steps.validate.outputs.stdout }}
+          \`\`\`
+          ${{ steps.validate.outputs.stdout.replace(/`/g, '\\`') }}
           \`\`\`
 
           </details>
@@ -120,8 +120,8 @@ runs:
 
           <details><summary>Show Plan</summary>
 
-          \`\`\`\n
-          ${plan}
+          \`\`\`
+          ${plan.replace(/`/g, '\\`')}
           \`\`\`
 
           </details>
