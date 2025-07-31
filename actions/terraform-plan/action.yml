@@ -112,7 +112,7 @@ runs:
 #          const plan = fs.readFileSync('/tmp/plan.out', 'utf8')
 #            .replace(/`/g, '\"')
 #          fs.unlinkSync('/tmp/plan.out')
-          const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8').replace(/`/g, '\"')
+          const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8').replace(/`/g, '\\`')
           fs.unlinkSync('//tmp/validate_output.txt')
           const environment = '${{ inputs.environment }}'.toUpperCase()
           const output = `#### Environment: ${environment}
