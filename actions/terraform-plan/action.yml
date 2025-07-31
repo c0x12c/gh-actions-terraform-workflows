@@ -124,7 +124,7 @@ runs:
           <details><summary>Validation Output</summary>
 
           \`\`\`\n
-          ${{ validationOutput }}
+          ${validationOutput}
           \`\`\`
 
           </details>
