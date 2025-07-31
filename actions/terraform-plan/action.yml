@@ -109,8 +109,13 @@ runs:
         github-token: ${{ inputs.github_token }}
         script: |
           const fs = require('fs')
+
           const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8').replace(/`/g, '\\`')
           fs.unlinkSync('/tmp/validate_output.txt')
+
+          const plan = fs.readFileSync('/tmp/plan.out', 'utf8')
+          fs.unlinkSync('/tmp/plan.out')
+
           const environment = '${{ inputs.environment }}'.toUpperCase()
           const output = `#### Environment: ${environment}
           #### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
@@ -118,14 +123,23 @@ runs:
           #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
           <details><summary>Validation Output</summary>
 
-          \`\`\`
-          ${validationOutput}
+          \`\`\`\n
+          ${{ validationOutput }}
           \`\`\`
 
           </details>
 
-          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*
-          `;
+          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+
+          <details><summary>Show Plan</summary>
+
+          \`\`\`\n
+          ${plan}
+          \`\`\`
+
+          </details>
+
+          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
 
           github.rest.issues.createComment({
             issue_number: context.issue.number,
