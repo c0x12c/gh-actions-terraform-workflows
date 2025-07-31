@@ -112,7 +112,7 @@ runs:
           const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8')
           fs.unlinkSync('/tmp/validate_output.txt')
           const environment = '${{ inputs.environment }}'.toUpperCase()
-          const output = `Environment: ${environment}`;
+          const output = `#### Environment: ${environment}`;
 
           github.rest.issues.createComment({
             issue_number: context.issue.number,
