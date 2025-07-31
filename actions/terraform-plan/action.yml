@@ -76,7 +76,7 @@ runs:
       id: validate
       shell: bash
       run: |
-        terraform validate -no-color | sed 's/`/\\"/g'
+        terraform validate -no-color | sed 's/`/\"/g'
       working-directory: ${{ inputs.working_dir }}
 
     - name: Terraform Plan
@@ -117,18 +117,19 @@ runs:
           \`\`\`
 
           </details>
-
-          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
-
-          <details><summary>Show Plan</summary>
-
-          \`\`\`
-          ${plan}
-          \`\`\`
-
-          </details>
-
-          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
+#
+#          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+#
+#          <details><summary>Show Plan</summary>
+#
+#          \`\`\`
+#          ${plan}
+#          \`\`\`
+#
+#          </details>
+#
+#          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*
+          `;
 
           github.rest.issues.createComment({
             issue_number: context.issue.number,
