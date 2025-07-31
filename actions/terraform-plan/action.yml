@@ -109,10 +109,23 @@ runs:
         github-token: ${{ inputs.github_token }}
         script: |
           const fs = require('fs')
-          const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8')
+          const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8').replace(/`/g, '\\`')
           fs.unlinkSync('/tmp/validate_output.txt')
           const environment = '${{ inputs.environment }}'.toUpperCase()
-          const output = `#### Environment: ${environment}`;
+          const output = `#### Environment: ${environment}
+          #### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
+          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+          <details><summary>Validation Output</summary>
+
+          \`\`\`
+          ${validationOutput}
+          \`\`\`
+
+          </details>
+
+          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*
+          `;
 
           github.rest.issues.createComment({
             issue_number: context.issue.number,
