@@ -103,7 +103,7 @@ runs:
         script: |
           const fs = require('fs')
           const plan = fs.readFileSync('/tmp/plan.out', 'utf8')
-            .replace(/`/g, '"')
+            .replace(/`/g, '\"')
           fs.unlinkSync('/tmp/plan.out')
           const environment = '${{ inputs.environment }}'.toUpperCase()
           const output = `#### Environment: ${environment}
@@ -117,6 +117,7 @@ runs:
           \`\`\`
 
           </details>
+          `;
 #
 #          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
 #
@@ -129,7 +130,6 @@ runs:
 #          </details>
 #
 #          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*
-          `;
 
           github.rest.issues.createComment({
             issue_number: context.issue.number,
