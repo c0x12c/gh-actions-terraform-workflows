@@ -79,12 +79,6 @@ runs:
         terraform validate -no-color > /tmp/validate_output.txt
       working-directory: ${{ inputs.working_dir }}
 
-    - name: Print Terraform Validate output
-      shell: bash
-      run: |
-        echo "VALIDATE OUTPUT:"
-        cat /tmp/validate_output.txt
-
     - name: Terraform Plan
       id: plan
       shell: bash
