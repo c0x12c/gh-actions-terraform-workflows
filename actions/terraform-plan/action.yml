@@ -128,8 +128,7 @@ runs:
 #
 #          </details>
 #
-#          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*
-          `;
+#          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
 
           github.rest.issues.createComment({
             issue_number: context.issue.number,
