@@ -83,7 +83,7 @@ runs:
       shell: bash
       run: |
         terraform plan -input=false -no-color -lock=false -refresh=false -out=/tmp/plan.tmp
-        terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
+        terraform show -no-color /tmp/plan.tmp | sed 's/`/\\`/g' > /tmp/plan.out
         rm -f /tmp/plan.tmp
       continue-on-error: true
       working-directory: ${{ inputs.working_dir }}
@@ -111,7 +111,7 @@ runs:
           <details><summary>Validation Output</summary>
 
           \`\`\`
-          ${{ steps.validate.outputs.stdout.replace(/`/g, '\\`') }}
+          ${{ steps.validate.outputs.stdout }}
           \`\`\`
 
           </details>
