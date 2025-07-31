@@ -115,19 +115,20 @@ runs:
           const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8')
           fs.unlinkSync('/tmp/validate_output.txt')
           const environment = '${{ inputs.environment }}'.toUpperCase()
-          const output = `#### Environment: ${environment}`;
-#
-#          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
-#
-#          <details><summary>Show Plan</summary>
-#
-#          \`\`\`
-#          ${plan}
-#          \`\`\`
-#
-#          </details>
-#
-#          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*
+          const output = `#### Environment: ${environment}
+
+          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+
+          <details><summary>Show Plan</summary>
+
+          \`\`\`
+          ${plan}
+          \`\`\`
+
+          </details>
+
+          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*
+          `;
 
           github.rest.issues.createComment({
             issue_number: context.issue.number,
