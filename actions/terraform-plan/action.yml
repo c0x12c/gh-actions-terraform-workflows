@@ -82,6 +82,11 @@ runs:
         echo "EOF" >> $GITHUB_OUTPUT
       working-directory: ${{ inputs.working_dir }}
 
+    - name: Print Terraform Validate output
+      shell: bash
+      run: |
+        echo "VALIDATE OUTPUT: ${{ steps.validate.outputs.stdout }}"
+
 #    - name: Terraform Plan
 #      id: plan
 #      shell: bash
