@@ -76,7 +76,7 @@ runs:
       id: validate
       shell: bash
       run: |
-        terraform validate -no-color | sed 's/`/\\'/g'
+        terraform validate -no-color | sed 's/`/\\`/g'
       working-directory: ${{ inputs.working_dir }}
 
     - name: Print Terraform Validate output
