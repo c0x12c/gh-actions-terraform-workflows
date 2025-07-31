@@ -85,22 +85,22 @@ runs:
         echo "VALIDATE OUTPUT:"
         cat /tmp/validate_output.txt
 
-#    - name: Terraform Plan
-#      id: plan
-#      shell: bash
-#      run: |
-#        terraform plan -input=false -no-color -lock=false -refresh=false -out=/tmp/plan.tmp
-#        terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
-#        rm -f /tmp/plan.tmp
-#      continue-on-error: true
-#      working-directory: ${{ inputs.working_dir }}
-#
-#    - name: Check for Plan Failure
-#      if: steps.plan.outputs.exitcode == 1
-#      shell: bash
-#      run: |
-#        echo "::error:: Terraform plan failed"
-#        exit 1
+    - name: Terraform Plan
+      id: plan
+      shell: bash
+      run: |
+        terraform plan -input=false -no-color -lock=false -refresh=false -out=/tmp/plan.tmp
+        terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
+        rm -f /tmp/plan.tmp
+      continue-on-error: true
+      working-directory: ${{ inputs.working_dir }}
+
+    - name: Check for Plan Failure
+      if: steps.plan.outputs.exitcode == 1
+      shell: bash
+      run: |
+        echo "::error:: Terraform plan failed"
+        exit 1
 
     - name: Post Terraform Plan Results to PR
       uses: actions/github-script@v7
