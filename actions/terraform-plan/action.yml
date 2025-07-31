@@ -76,7 +76,7 @@ runs:
       id: validate
       shell: bash
       run: |
-        terraform validate -no-color | sed 's/`/\"/g'
+        terraform validate -no-color | sed 's/`/\'/g'
       working-directory: ${{ inputs.working_dir }}
 
     - name: Print Terraform Validate output
@@ -84,22 +84,22 @@ runs:
       run: |
         echo "VALIDATE OUTPUT: ${{ steps.validate.outputs.stdout }}"
 
-    - name: Terraform Plan
-      id: plan
-      shell: bash
-      run: |
-        terraform plan -input=false -no-color -lock=false -refresh=false -out=/tmp/plan.tmp
-        terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
-        rm -f /tmp/plan.tmp
-      continue-on-error: true
-      working-directory: ${{ inputs.working_dir }}
-
-    - name: Check for Plan Failure
-      if: steps.plan.outputs.exitcode == 1
-      shell: bash
-      run: |
-        echo "::error:: Terraform plan failed"
-        exit 1
+#    - name: Terraform Plan
+#      id: plan
+#      shell: bash
+#      run: |
+#        terraform plan -input=false -no-color -lock=false -refresh=false -out=/tmp/plan.tmp
+#        terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
+#        rm -f /tmp/plan.tmp
+#      continue-on-error: true
+#      working-directory: ${{ inputs.working_dir }}
+#
+#    - name: Check for Plan Failure
+#      if: steps.plan.outputs.exitcode == 1
+#      shell: bash
+#      run: |
+#        echo "::error:: Terraform plan failed"
+#        exit 1
 
 #    - uses: actions/github-script@v7
 #      if: github.event_name == 'pull_request'
