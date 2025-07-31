@@ -115,18 +115,7 @@ runs:
           const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8')
           fs.unlinkSync('/tmp/validate_output.txt')
           const environment = '${{ inputs.environment }}'.toUpperCase()
-          const output = `#### Environment: ${environment}
-          #### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
-          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
-          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
-          <details><summary>Validation Output</summary>
-
-          \`\`\`
-          ${validationOutput}
-          \`\`\`
-
-          </details>
-          `;
+          const output = `#### Environment: ${environment}`;
 #
 #          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
 #
