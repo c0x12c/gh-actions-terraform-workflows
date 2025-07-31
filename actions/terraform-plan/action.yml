@@ -75,7 +75,8 @@ runs:
     - name: Terraform Validate
       id: validate
       shell: bash
-      run: terraform validate -no-color
+      run: |
+        terraform validate -no-color > /tmp/validate_output.txt
       working-directory: ${{ inputs.working_dir }}
 
     - name: Terraform Plan
@@ -95,14 +96,20 @@ runs:
         echo "::error:: Terraform plan failed"
         exit 1
 
-    - uses: actions/github-script@v7
+    - name: Post Terraform Plan Results to PR
+      uses: actions/github-script@v7
       if: github.event_name == 'pull_request'
       with:
         github-token: ${{ inputs.github_token }}
         script: |
           const fs = require('fs')
+
+          const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8').replace(/`/g, '\`')
+          fs.unlinkSync('/tmp/validate_output.txt')
+
           const plan = fs.readFileSync('/tmp/plan.out', 'utf8')
           fs.unlinkSync('/tmp/plan.out')
+
           const environment = '${{ inputs.environment }}'.toUpperCase()
           const output = `#### Environment: ${environment}
           #### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
@@ -111,7 +118,7 @@ runs:
           <details><summary>Validation Output</summary>
 
           \`\`\`\n
-          ${{ steps.validate.outputs.stdout }}
+          ${validationOutput}
           \`\`\`
 
           </details>
