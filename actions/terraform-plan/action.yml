@@ -83,7 +83,7 @@ runs:
       id: plan
       shell: bash
       run: |
-        terraform plan -input=false -no-color -lock=false -refresh=false -out=/tmp/plan.tmp
+        terraform plan -input=false -no-color -lock=false -refresh=true -out=/tmp/plan.tmp
         terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
         rm -f /tmp/plan.tmp
       continue-on-error: true
