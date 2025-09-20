@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v1.1.4] - 2025-09-20
+
+### Added
+
+- Added `refresh` input parameter to terraform-apply action to control state refresh behavior.
+
 ## [v1.1.3] - 2025-07-30
 
 ### Fixed
