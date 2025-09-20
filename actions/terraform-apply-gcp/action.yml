@@ -33,6 +33,10 @@ inputs:
   working_dir:
     description: "The working directory for Terraform files"
     required: true
+  refresh:
+    description: "Whether to refresh the state before applying (true/false)."
+    required: false
+    default: "true"
 
 runs:
   using: "composite"
@@ -81,7 +85,7 @@ runs:
     - name: Terraform Apply
       id: tf_apply
       shell: bash
-      run: terraform apply -input=false -auto-approve -refresh=false
+      run: terraform apply -input=false -auto-approve -refresh=${{ inputs.refresh }}
       working-directory: ${{ inputs.working_dir }}
 
     - name: Send a Notification to Slack on failure
