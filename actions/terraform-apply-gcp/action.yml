@@ -37,6 +37,10 @@ inputs:
     description: "Whether to refresh the state before applying (true/false)."
     required: false
     default: "true"
+  github_token:
+    description: "GitHub Token required to post comments to PR"
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -82,10 +86,19 @@ runs:
       run: terraform init
       working-directory: ${{ inputs.working_dir }}
 
+    - name: Terraform Plan
+      id: plan
+      shell: bash
+      run: |
+        terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out=/tmp/plan.tmp
+        terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
+      continue-on-error: true
+      working-directory: ${{ inputs.working_dir }}
+
     - name: Terraform Apply
       id: tf_apply
       shell: bash
-      run: terraform apply -input=false -auto-approve -refresh=${{ inputs.refresh }}
+      run: terraform apply -input=false -auto-approve -refresh=${{ inputs.refresh }} /tmp/plan.tmp
       working-directory: ${{ inputs.working_dir }}
 
     - name: Send Notification to Slack on success
@@ -101,3 +114,64 @@ runs:
       with:
         webhook_url: ${{ inputs.slack_webhook_url }}
         title: '❌ *${{ github.event.repository.name }} - Terraform Apply FAILED in ${{ inputs.environment }}*'
+
+    - name: Post Terraform Apply Results to PR
+      uses: actions/github-script@v7
+      if: github.event_name == 'pull_request' && inputs.github_token != ''
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const fs = require('fs')
+
+          let plan = fs.readFileSync('/tmp/plan.out', 'utf8')
+          fs.unlinkSync('/tmp/plan.out')
+
+          const environment = '${{ inputs.environment }}'.toUpperCase()
+          
+          // GitHub comment body limit is 65536 characters
+          const MAX_COMMENT_LENGTH = 65536
+          
+          // Build the base comment template
+          const baseTemplate = `#### Environment: ${environment}
+          #### Terraform Apply 🚀\`${{ steps.tf_apply.outcome }}\`
+          
+          <details><summary>Show Plan</summary>
+
+          \`\`\`\n
+          ${plan}
+          \`\`\`
+
+          </details>
+
+          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`
+
+          let output = baseTemplate
+
+          // Check if comment exceeds GitHub's limit and truncate if necessary
+          if (output.length > MAX_COMMENT_LENGTH) {
+            const reservedLength = baseTemplate.indexOf('${plan}') + 100 // Reserve space for plan placeholder
+            const availableForPlan = MAX_COMMENT_LENGTH - reservedLength
+            const truncationNotice = `\n\n... [Plan truncated - showing first ${availableForPlan} characters only. See workflow logs for full output.] ...\n\`\`\`\n`
+            const maxPlanLength = availableForPlan - truncationNotice.length
+            
+            if (maxPlanLength > 0) {
+              const truncatedPlan = plan.substring(0, maxPlanLength) + truncationNotice
+              output = baseTemplate.replace('${plan}', truncatedPlan)
+            } else {
+              // If even minimal plan doesn't fit, show minimal message
+              output = `#### Environment: ${environment}
+              
+              #### Terraform Apply 🚀\`${{ steps.tf_apply.outcome }}\`
+              
+              Plan output is too large to display. Please check the workflow logs for the full plan.
+              
+              *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`
+            }
+          }
+
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: output
+          })

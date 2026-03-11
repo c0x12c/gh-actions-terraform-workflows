@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v1.1.6] - 2026-03-11
+
+### Added
+
+- Added `github_token` input parameter to `terraform-apply-gcp` action for posting PR comments.
+- Added Terraform Plan step to `terraform-apply-gcp` action to capture plan output before apply.
+- Added PR comment posting step to `terraform-apply-gcp` action with deployment results.
+
+### Fixed
+
+- Fixed GitHub API "Body is too long" error in `terraform-plan` action by implementing automatic truncation when plan output exceeds 65536 character limit.
+- Added fallback minimal message when even truncated plan exceeds GitHub's comment limit.
+
 ## [v1.1.5] - 2025-10-05
 
 ### Fixed
