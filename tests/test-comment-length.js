@@ -16,6 +16,10 @@ const MAX_COMMENT_LENGTH = 65536;
  * This matches the exact logic in actions/terraform-plan/action.yml
  */
 function buildPlanComment(environment, validationOutput, plan, steps, context) {
+  // Apply the backtick escaping logic as in the action
+  const escapedValidationOutput = validationOutput.replace(/`/g, '\\`');
+  const escapedPlan = plan.replace(/`/g, '\\`');
+
   const baseHeader = `#### Environment: ${environment}
           #### Terraform Format and Style 🖌\`${steps.fmt.outcome}\`
           #### Terraform Initialization ⚙️\`${steps.init.outcome}\`
@@ -23,7 +27,7 @@ function buildPlanComment(environment, validationOutput, plan, steps, context) {
           <details><summary>Validation Output</summary>
 
           \`\`\`\n
-          ${validationOutput}
+          ${escapedValidationOutput}
           \`\`\`
 
           </details>
@@ -46,13 +50,13 @@ function buildPlanComment(environment, validationOutput, plan, steps, context) {
   let output;
 
   // Check if comment exceeds GitHub's limit and truncate if necessary
-  if (baseLength + plan.length > MAX_COMMENT_LENGTH) {
+  if (baseLength + escapedPlan.length > MAX_COMMENT_LENGTH) {
     const availableForPlan = MAX_COMMENT_LENGTH - baseLength;
     const truncationNotice = `\n\n... [Plan truncated - showing first ${availableForPlan} characters only. See workflow logs for full output.] ...`;
     const maxPlanLength = availableForPlan - truncationNotice.length;
 
     if (maxPlanLength > 0) {
-      const truncatedPlan = plan.substring(0, maxPlanLength) + truncationNotice;
+      const truncatedPlan = escapedPlan.substring(0, maxPlanLength) + truncationNotice;
       output = `${baseHeader}${truncatedPlan}${baseFooter}`;
     } else {
       output = `#### Environment: ${environment}
@@ -64,7 +68,7 @@ function buildPlanComment(environment, validationOutput, plan, steps, context) {
               *Pusher: @${context.actor}, Action: \`${context.event_name}\`, Working Directory: \`${context.working_dir}\`, Workflow: \`${context.workflow}\`*`;
     }
   } else {
-    output = `${baseHeader}${plan}${baseFooter}`;
+    output = `${baseHeader}${escapedPlan}${baseFooter}`;
   }
 
   return output;
@@ -75,6 +79,9 @@ function buildPlanComment(environment, validationOutput, plan, steps, context) {
  * This matches the exact logic in actions/terraform-apply-gcp/action.yml
  */
 function buildApplyComment(environment, plan, steps, context) {
+  // Apply the backtick escaping logic as in the action
+  const escapedPlan = plan.replace(/`/g, '\\`');
+
   const baseHeader = `#### Environment: ${environment}
           #### Terraform Apply 🚀\`${steps.tf_apply.outcome}\`
 
@@ -94,13 +101,13 @@ function buildApplyComment(environment, plan, steps, context) {
   let output;
 
   // Check if comment exceeds GitHub's limit and truncate if necessary
-  if (baseLength + plan.length > MAX_COMMENT_LENGTH) {
+  if (baseLength + escapedPlan.length > MAX_COMMENT_LENGTH) {
     const availableForPlan = MAX_COMMENT_LENGTH - baseLength;
     const truncationNotice = `\n\n... [Plan truncated - showing first ${availableForPlan} characters only. See workflow logs for full output.] ...`;
     const maxPlanLength = availableForPlan - truncationNotice.length;
 
     if (maxPlanLength > 0) {
-      const truncatedPlan = plan.substring(0, maxPlanLength) + truncationNotice;
+      const truncatedPlan = escapedPlan.substring(0, maxPlanLength) + truncationNotice;
       output = `${baseHeader}${truncatedPlan}${baseFooter}`;
     } else {
       output = `#### Environment: ${environment}
@@ -112,7 +119,7 @@ function buildApplyComment(environment, plan, steps, context) {
               *Pusher: @${context.actor}, Action: \`${context.event_name}\`, Working Directory: \`${context.working_dir}\`, Workflow: \`${context.workflow}\`*`;
     }
   } else {
-    output = `${baseHeader}${plan}${baseFooter}`;
+    output = `${baseHeader}${escapedPlan}${baseFooter}`;
   }
 
   return output;

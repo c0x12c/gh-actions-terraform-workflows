@@ -104,10 +104,10 @@ runs:
         script: |
           const fs = require('fs')
 
-          const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8').replace(/`/g, '\`')
+          const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8').replace(/`/g, '\\`')
           fs.unlinkSync('/tmp/validate_output.txt')
 
-          let plan = fs.readFileSync('/tmp/plan.out', 'utf8')
+          let plan = fs.readFileSync('/tmp/plan.out', 'utf8').replace(/`/g, '\\`')
           fs.unlinkSync('/tmp/plan.out')
 
           const environment = '${{ inputs.environment }}'.toUpperCase()
