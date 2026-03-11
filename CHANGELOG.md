@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v1.1.7] - 2026-03-11
+
+### Added
+
+- Added automated test suite for GitHub Action scripts in `tests/` directory.
+- Added a new CI workflow `.github/workflows/test-scripts.yml` to run tests on every pull request and push.
+
+### Fixed
+
+- Fixed backtick escaping logic in `terraform-plan` and `terraform-plan-gcp` actions to correctly handle plans containing backticks by using proper JavaScript escaping.
+- Improved the backtick replacement in `terraform-apply-gcp` for consistent PR comment formatting.
+
+### Changed
+
+- Moved existing test scripts from `tools/` to `tests/` for better organization.
+
 ## [v1.1.6] - 2026-03-11
 
 ### Added

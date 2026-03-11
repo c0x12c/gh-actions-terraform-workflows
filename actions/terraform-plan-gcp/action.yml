@@ -112,7 +112,7 @@ runs:
           const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8').replace(/`/g, '\\`')
           fs.unlinkSync('/tmp/validate_output.txt')
 
-          const plan = fs.readFileSync('/tmp/plan.out', 'utf8')
+          const plan = fs.readFileSync('/tmp/plan.out', 'utf8').replace(/`/g, '\\`')
           fs.unlinkSync('/tmp/plan.out')
 
           const environment = '${{ inputs.environment }}'.toUpperCase()
