@@ -113,8 +113,8 @@ runs:
           const environment = '${{ inputs.environment }}'.toUpperCase()
           
           // GitHub comment body limit is 65536 characters
-          const MAX_COMMENT_LENGTH = 65536
-          
+          const MAX_PLAN_LENGTH = 65536 - 2000
+
           // Build the base comment template
           const baseTemplate = `#### Environment: ${environment}
           #### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
@@ -140,29 +140,8 @@ runs:
 
           *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`
 
-          let output = baseTemplate
-
-          // Check if comment exceeds GitHub's limit and truncate if necessary
-          if (output.length > MAX_COMMENT_LENGTH) {
-            const reservedLength = baseTemplate.indexOf('${plan}') + 100 // Reserve space for plan placeholder
-            const availableForPlan = MAX_COMMENT_LENGTH - reservedLength
-            const truncationNotice = `\n\n... [Plan truncated - showing first ${availableForPlan} characters only. See workflow logs for full output.] ...\n\`\`\`\n`
-            const maxPlanLength = availableForPlan - truncationNotice.length
-            
-            if (maxPlanLength > 0) {
-              const truncatedPlan = plan.substring(0, maxPlanLength) + truncationNotice
-              output = baseTemplate.replace('${plan}', truncatedPlan)
-            } else {
-              // If even minimal plan doesn't fit, show minimal message
-              output = `#### Environment: ${environment}
-              
-              #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
-              
-              Plan output is too large to display. Please check the workflow logs for the full plan.
-              
-              *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`
-            }
-          }
+          let outputPlan = output.length > MAX_PLAN_LENGTH ? plan.substring(0, MAX_PLAN_LENGTH) : plan
+          const output = baseTemplate.replace('${plan}', outputPlan)
 
           github.rest.issues.createComment({
             issue_number: context.issue.number,
