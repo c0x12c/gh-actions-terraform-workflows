@@ -16,8 +16,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Run Comment Length Validation Tests
-        run: node tests/test-comment-length.js
-
-      - name: Run Backtick Escaping Tests
-        run: node tests/test-backtick-escaping.js
+      - name: Run Tests
+        run: |
+          node tests/test-comment-length.js
+          node tests/test-backtick-escaping.js
