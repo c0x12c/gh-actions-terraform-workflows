@@ -127,46 +127,49 @@ runs:
           fs.unlinkSync('/tmp/plan.out')
 
           const environment = '${{ inputs.environment }}'.toUpperCase()
-          
+
           // GitHub comment body limit is 65536 characters
           const MAX_COMMENT_LENGTH = 65536
-          
-          // Build the base comment template
-          const baseTemplate = `#### Environment: ${environment}
+
+          // Calculate the base template size (without the plan content)
+          const baseHeader = `#### Environment: ${environment}
           #### Terraform Apply 🚀\`${{ steps.tf_apply.outcome }}\`
-          
+
           <details><summary>Show Plan</summary>
 
           \`\`\`\n
-          ${plan}
+          `;
+
+          const baseFooter = `
           \`\`\`
 
           </details>
 
-          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`
+          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
 
-          let output = baseTemplate
+          const baseLength = baseHeader.length + baseFooter.length;
+          let output;
 
           // Check if comment exceeds GitHub's limit and truncate if necessary
-          if (output.length > MAX_COMMENT_LENGTH) {
-            const reservedLength = baseTemplate.indexOf('${plan}') + 100 // Reserve space for plan placeholder
-            const availableForPlan = MAX_COMMENT_LENGTH - reservedLength
-            const truncationNotice = `\n\n... [Plan truncated - showing first ${availableForPlan} characters only. See workflow logs for full output.] ...\n\`\`\`\n`
-            const maxPlanLength = availableForPlan - truncationNotice.length
-            
+          if (baseLength + plan.length > MAX_COMMENT_LENGTH) {
+            const availableForPlan = MAX_COMMENT_LENGTH - baseLength;
+            const truncationNotice = `\n\n... [Plan truncated - showing first ${availableForPlan} characters only. See workflow logs for full output.] ...`;
+            const maxPlanLength = availableForPlan - truncationNotice.length;
+
             if (maxPlanLength > 0) {
-              const truncatedPlan = plan.substring(0, maxPlanLength) + truncationNotice
-              output = baseTemplate.replace('${plan}', truncatedPlan)
+              const truncatedPlan = plan.substring(0, maxPlanLength) + truncationNotice;
+              output = `${baseHeader}${truncatedPlan}${baseFooter}`;
             } else {
-              // If even minimal plan doesn't fit, show minimal message
               output = `#### Environment: ${environment}
-              
+
               #### Terraform Apply 🚀\`${{ steps.tf_apply.outcome }}\`
-              
+
               Plan output is too large to display. Please check the workflow logs for the full plan.
-              
-              *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`
+
+              *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
             }
+          } else {
+            output = `${baseHeader}${plan}${baseFooter}`;
           }
 
           github.rest.issues.createComment({
