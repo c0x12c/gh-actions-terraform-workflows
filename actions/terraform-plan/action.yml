@@ -140,7 +140,7 @@ runs:
 
           *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`
 
-          let outputPlan = output.length > MAX_PLAN_LENGTH ? plan.substring(0, MAX_PLAN_LENGTH) : plan
+          let outputPlan = plan.length > MAX_PLAN_LENGTH ? plan.substring(0, MAX_PLAN_LENGTH) : plan
           const output = baseTemplate.replace('${plan}', outputPlan)
 
           github.rest.issues.createComment({
