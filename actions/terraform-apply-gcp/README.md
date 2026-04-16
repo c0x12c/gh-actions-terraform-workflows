@@ -17,13 +17,15 @@ Here are the inputs the workflow requires:
 | `slack_webhook_url`              | The Slack Webhook URL for posting deployment notifications | `false`  | `''`    |
 | `terraform_version`              | Terraform version to use                                   | `false`  | `1.8.4` |
 | `working_dir`                    | The working directory for Terraform files                  | `true`   |         |
+| `refresh`                        | Whether to refresh state before planning and applying      | `false`  | `true`  |
+| `github_token`                   | GitHub Token to post comments to PR                        | `false`  | `''`    |
 
 ## Usage
 
 ```
 steps:
   - name: Run Terraform Apply
-    uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-apply-gcp@v1
+    uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-apply-gcp@v2
     with:
       gcp_project_id: 'my-project-id'
       gcp_service_account: 'my-service-account'
@@ -34,4 +36,6 @@ steps:
       slack_webhook_url: 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
       terraform_version: '0.14.5'
       working_dir: './terraform'
+      refresh: 'true'
+      github_token: 'github-token'
 ```

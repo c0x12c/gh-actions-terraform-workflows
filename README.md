@@ -2,6 +2,12 @@
 
 This repository provides a collection of reusable composite GitHub Actions for managing Terraform operations (`plan`, `apply`, etc.) across different environments (`dev`, `prod`, `stage`, etc.). These actions are designed to integrate with AWS and securely manage secrets.
 
+## Version Warning
+
+`v1.1.4` changed the AWS `terraform-apply` action from always running with `-refresh=false` to using the `refresh` input with a default of `true`; the GCP apply action also defaults `refresh` to `true` in the current `v1` line. Because `v1` is a moving tag, workflows using `@v1` may already run apply with refresh enabled.
+
+If your workflows rely on the old no-refresh behavior, set `refresh: 'false'` explicitly or pin to `v1.1.3` while you review the migration. Use `@v2` for the major release where plan and apply actions expose the same refresh configuration.
+
 ## Available Composite Actions
 
 ### 1. `pull-request` (Terraform Plan)
