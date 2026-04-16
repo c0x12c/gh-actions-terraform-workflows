@@ -16,13 +16,14 @@ Here are the inputs the workflow requires:
 | `slack_webhook_url` | The Slack Webhook URL for posting deployment notifications | `false`  | `''`    |
 | `terraform_version` | Terraform version to use                                   | `false`  | `1.8.4` |
 | `working_dir`       | The working directory for Terraform files                  | `true`   |         |
+| `refresh`           | Whether to refresh state before applying                   | `false`  | `true`  |
 
 ## Usage
 
 ```
 steps:
   - name: Run Terraform Apply
-    uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-apply@v1
+    uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-apply@v2
     with:
       aws_region: 'us-east-1'
       aws_role: 'arn:aws:iam::123456789012:role/my-role'
@@ -32,4 +33,5 @@ steps:
       slack_webhook_url: 'https://hooks.slack.com/services/T00000000/B00000000/XXXXXXXXXXXXXXXXXXXXXXXX'
       terraform_version: '0.14.5'
       working_dir: './terraform'
+      refresh: 'true'
 ```

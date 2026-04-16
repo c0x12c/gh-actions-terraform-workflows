@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v2.0.0] - Unreleased
+
+### Changed
+
+- Added the `refresh` input to `terraform-plan` and `terraform-plan-gcp`.
+- Changed standalone plan actions to use `-refresh=${{ inputs.refresh }}` with a default of `true`, matching the apply actions.
+
+### Warning
+
+- `v1.1.4` changed AWS `terraform-apply` from always using `-refresh=false` to a configurable `refresh` input with a default of `true`; the GCP apply action also defaults `refresh` to `true` in the current `v1` line. Because `v1` is a moving tag, workflows using `@v1` may have already picked up that behavior. If you need the old no-refresh behavior, set `refresh: 'false'` explicitly or pin to `v1.1.3` while you plan the migration.
+- Publish this change as a major release and move consumers to `@v2` once plan/apply refresh behavior is reviewed for each environment.
+
 ## [v1.1.7] - 2026-03-11
 
 ### Added

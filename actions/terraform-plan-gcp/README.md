@@ -17,6 +17,7 @@ Here are the required inputs for the workflow:
 | `secret_filter`                  | The filter name to use with git-secret-protector  | `false`  | `''`    |
 | `terraform_version`              | The Terraform version to use                      | `false`  | `1.8.4` |
 | `working_dir`                    | Working directory for Terraform files             | `true`   |         |
+| `refresh`                        | Whether to refresh state before planning          | `false`  | `true`  |
 
 ## Usage
 
@@ -25,7 +26,7 @@ Here is an example of how to use this workflow in your GitHub actions:
 ```
 steps:
   - name: Run Terraform Plan
-    uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-plan-gcp@v1
+    uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-plan-gcp@v2
     with:
       gcp_project_id: 'my-project-id'
       gcp_service_account: 'my-service-account
@@ -36,6 +37,7 @@ steps:
       secret_filter: 'my-secret-filter'
       terraform_version: '1.8.4'
       working_dir: './terraform'
+      refresh: 'true'
 ```
 
 Add sample for Terraform Plan workflow
