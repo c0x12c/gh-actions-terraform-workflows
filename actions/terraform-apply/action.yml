@@ -34,6 +34,10 @@ inputs:
     description: "Whether to refresh the state before applying (true/false)"
     required: false
     default: "true"
+  role_duration_seconds:
+    description: "STS session TTL in seconds for the assumed AWS role. Bump when apply can run longer than the role default (e.g. MSK reconfigurations that take 30-60 min). Capped by the IAM role's MaxSessionDuration."
+    required: false
+    default: "3600"
 
 runs:
   using: "composite"
@@ -64,6 +68,7 @@ runs:
         role-to-assume: ${{ inputs.aws_role }}
         role-session-name: gh-actions
         aws-region: ${{ inputs.aws_region }}
+        role-duration-seconds: ${{ inputs.role_duration_seconds }}
 
     - name: Decrypt Secrets
       if: ${{ inputs.secret_filter != '' }}
