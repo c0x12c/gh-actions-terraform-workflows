@@ -50,8 +50,21 @@ function interpolate(src, { mode, marker, prNumber }) {
     .replace(/\$\{\{ github\.workflow \}\}/g, 'Plan');
 }
 
+/** Read a declared input default straight out of action.yml (no YAML dependency). */
+function declaredInputDefault(name) {
+  const lines = fs.readFileSync(ACTION, 'utf8').split('\n');
+  const start = lines.findIndex((l) => l.trim() === `${name}:`);
+  assert.ok(start !== -1, `input ${name} not declared in action.yml`);
+  for (const line of lines.slice(start + 1)) {
+    if (/^\s{2}\S/.test(line)) break; // next input
+    const m = line.match(/^\s+default:\s*"?([^"]*)"?\s*$/);
+    if (m) return m[1];
+  }
+  return undefined;
+}
+
 async function runAction({
-  mode = 'new',
+  mode = 'sticky',
   marker = '',
   prNumber = '',
   planSize = 100,
@@ -102,7 +115,15 @@ async function test(name, fn) {
 (async () => {
   console.log('Running sticky comment tests...\n');
 
-  await test('default mode posts a new comment and embeds no marker', async () => {
+  await test('comment_mode defaults to sticky', async () => {
+    assert.strictEqual(declaredInputDefault('comment_mode'), 'sticky');
+  });
+
+  await test('comment_marker defaults to empty so the marker is derived', async () => {
+    assert.strictEqual(declaredInputDefault('comment_marker'), '');
+  });
+
+  await test('new mode appends a fresh comment and embeds no marker', async () => {
     const { call, calls } = await runAction({ mode: 'new' });
     assert.strictEqual(call.op, 'create');
     assert.ok(!call.body.includes('terraform-plan:'), 'marker leaked into non-sticky comment');
@@ -152,6 +173,30 @@ async function test(name, fn) {
     const { call } = await runAction({ mode: 'new', prNumber: '399', contextIssue: undefined });
     assert.strictEqual(call.op, 'create');
     assert.strictEqual(call.issue, 399);
+  });
+
+  await test('a comment merely quoting the marker is not treated as the sticky comment', async () => {
+    const { call } = await runAction({
+      mode: 'sticky',
+      // The plan text is embedded verbatim, so a marker can legitimately appear mid-body.
+      existingComments: [{ id: 88, body: `someone quoted this:\n${DEFAULT_MARKER}\nin their reply` }],
+    });
+    assert.strictEqual(call.op, 'create', 'must not hijack a comment that only mentions the marker');
+  });
+
+  await test('a malformed pr_number fails loudly instead of retargeting the event PR', async () => {
+    for (const bad of ['abc', '0', '-3', '1.5']) {
+      await assert.rejects(
+        () => runAction({ mode: 'new', prNumber: bad, contextIssue: 5 }),
+        /pr_number must be a positive integer/,
+        `pr_number "${bad}" should have been rejected`,
+      );
+    }
+  });
+
+  await test('an empty pr_number falls back to the event PR', async () => {
+    const { call } = await runAction({ mode: 'new', prNumber: '   ', contextIssue: 12 });
+    assert.strictEqual(call.issue, 12);
   });
 
   await test('sticky comment stays within the GitHub comment limit', async () => {

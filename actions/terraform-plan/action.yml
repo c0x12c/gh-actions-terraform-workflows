@@ -35,17 +35,19 @@ inputs:
     default: "true"
   comment_mode:
     description: >-
-      How to post the plan comment. "new" (default) adds a fresh comment on every run.
-      "sticky" updates a single comment in place, keyed by comment_marker - use this when a
-      PR runs several plans (multiple environments or working directories) to avoid a new
-      comment per environment per push.
+      How to post the plan comment. "sticky" (default) keeps one comment per plan and
+      updates it in place, so repeated pushes do not bury the PR under a comment per
+      environment per run. Set "new" to append a fresh comment on every run instead.
     required: false
-    default: "new"
+    default: "sticky"
   comment_marker:
     description: >-
       Hidden HTML marker identifying the sticky comment to update. Only used when
-      comment_mode is "sticky". Defaults to a marker derived from environment and
-      working_dir, which keeps concurrent plans on the same PR in separate comments.
+      comment_mode is "sticky". Left empty it derives
+      "<!-- terraform-plan:<environment>:<working_dir> -->", which keeps concurrent plans on
+      the same PR in separate comments; set it explicitly to group them differently. It
+      cannot be defaulted literally here because the inputs context is unavailable when
+      GitHub evaluates input defaults.
     required: false
     default: ""
   pr_number:
@@ -202,7 +204,18 @@ runs:
             output = `${baseHeader}${plan}${baseFooter}`;
           }
 
-          const issue_number = Number('${{ inputs.pr_number }}') || context.issue.number;
+          // Fail loudly on a malformed pr_number rather than silently falling back to the
+          // event's PR, which would post the plan onto the wrong pull request.
+          const rawPrNumber = '${{ inputs.pr_number }}'.trim();
+          let issue_number;
+          if (rawPrNumber !== '') {
+            issue_number = Number(rawPrNumber);
+            if (!Number.isInteger(issue_number) || issue_number <= 0) {
+              throw new Error(`pr_number must be a positive integer, got "${rawPrNumber}"`);
+            }
+          } else {
+            issue_number = context.issue.number;
+          }
           const { owner, repo } = context.repo;
 
           if (sticky) {
@@ -211,7 +224,10 @@ runs:
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner, repo, issue_number, per_page: 100,
             });
-            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            // Match the marker as the comment's first line, not anywhere in the body: the
+            // plan text is embedded verbatim, so a substring match could latch onto an
+            // unrelated comment that merely quotes the marker.
+            const existing = comments.find((c) => c.body && c.body.split('\n')[0].trim() === marker);
             if (existing) {
               await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: output });
               return;
