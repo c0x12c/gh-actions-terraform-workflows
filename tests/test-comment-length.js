@@ -21,7 +21,6 @@ function buildPlanComment(environment, validationOutput, plan, steps, context) {
   const escapedPlan = plan.replace(/`/g, '\\`');
 
   const baseHeader = `#### Environment: ${environment}
-          #### Terraform Format and Style 🖌\`${steps.fmt.outcome}\`
           #### Terraform Initialization ⚙️\`${steps.init.outcome}\`
           #### Terraform Validation 🤖\`${steps.validate.outcome}\`
           <details><summary>Validation Output</summary>
@@ -52,20 +51,22 @@ function buildPlanComment(environment, validationOutput, plan, steps, context) {
   // Check if comment exceeds GitHub's limit and truncate if necessary
   if (baseLength + escapedPlan.length > MAX_COMMENT_LENGTH) {
     const availableForPlan = MAX_COMMENT_LENGTH - baseLength;
-    const truncationNotice = `\n\n... [Plan truncated - showing first ${availableForPlan} characters only. See workflow logs for full output.] ...`;
-    const maxPlanLength = availableForPlan - truncationNotice.length;
+    // Notice length depends on the number it reports, so size it with a placeholder first,
+    // then render it with the real count.
+    const notice = (n) => `\n\n... [Plan truncated - showing first ${n} characters only. See workflow logs for full output.] ...`;
+    const maxPlanLength = availableForPlan - notice(availableForPlan).length;
 
     if (maxPlanLength > 0) {
-      const truncatedPlan = escapedPlan.substring(0, maxPlanLength) + truncationNotice;
+      const truncatedPlan = escapedPlan.substring(0, maxPlanLength) + notice(maxPlanLength);
       output = `${baseHeader}${truncatedPlan}${baseFooter}`;
     } else {
       output = `#### Environment: ${environment}
 
-              #### Terraform Plan 📖\`${steps.plan.outcome}\`
+#### Terraform Plan 📖\`${steps.plan.outcome}\`
 
-              Plan output is too large to display. Please check the workflow logs for the full plan.
+Plan output is too large to display. Please check the workflow logs for the full plan.
 
-              *Pusher: @${context.actor}, Action: \`${context.event_name}\`, Working Directory: \`${context.working_dir}\`, Workflow: \`${context.workflow}\`*`;
+*Pusher: @${context.actor}, Action: \`${context.event_name}\`, Working Directory: \`${context.working_dir}\`, Workflow: \`${context.workflow}\`*`;
     }
   } else {
     output = `${baseHeader}${escapedPlan}${baseFooter}`;

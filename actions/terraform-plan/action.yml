@@ -33,6 +33,27 @@ inputs:
     description: "Whether to refresh the state before planning (true/false)"
     required: false
     default: "true"
+  comment_mode:
+    description: >-
+      How to post the plan comment. "new" (default) adds a fresh comment on every run.
+      "sticky" updates a single comment in place, keyed by comment_marker - use this when a
+      PR runs several plans (multiple environments or working directories) to avoid a new
+      comment per environment per push.
+    required: false
+    default: "new"
+  comment_marker:
+    description: >-
+      Hidden HTML marker identifying the sticky comment to update. Only used when
+      comment_mode is "sticky". Defaults to a marker derived from environment and
+      working_dir, which keeps concurrent plans on the same PR in separate comments.
+    required: false
+    default: ""
+  pr_number:
+    description: >-
+      PR number to comment on. Defaults to the PR from the triggering event; set it
+      explicitly so a workflow_dispatch-driven plan can still post a comment.
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -102,7 +123,7 @@ runs:
 
     - name: Post Terraform Plan Results to PR
       uses: actions/github-script@v8
-      if: github.event_name == 'pull_request'
+      if: ${{ github.event_name == 'pull_request' || inputs.pr_number != '' }}
       with:
         github-token: ${{ inputs.github_token }}
         script: |
@@ -116,12 +137,17 @@ runs:
 
           const environment = '${{ inputs.environment }}'.toUpperCase()
 
+          const sticky = '${{ inputs.comment_mode }}' === 'sticky';
+          // Default keeps concurrent plans on one PR in separate comments (a PR that plans
+          // several environments or roots would otherwise fight over a single comment).
+          const marker = '${{ inputs.comment_marker }}' ||
+            `<!-- terraform-plan:${{ inputs.environment }}:${{ inputs.working_dir }} -->`;
+
           // GitHub comment body limit is 65536 characters
           const MAX_COMMENT_LENGTH = 65536
 
           // Calculate the base template size (without the plan content)
-          const baseHeader = `#### Environment: ${environment}
-          #### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
+          const baseHeader = `${sticky ? marker + '\n' : ''}#### Environment: ${environment}
           #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
           #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
           <details><summary>Validation Output</summary>
@@ -149,31 +175,47 @@ runs:
           const baseLength = baseHeader.length + baseFooter.length;
           let output;
 
-          // Check if comment exceeds GitHub's limit and truncate if necessary
+          // Check if comment exceeds GitHub's limit and truncate if necessary. The decision
+          // is made against the note-less budget: the truncation notice only exists when we
+          // truncate, so reserving room for it up front would truncate a plan that fits.
           if (baseLength + plan.length > MAX_COMMENT_LENGTH) {
             const availableForPlan = MAX_COMMENT_LENGTH - baseLength;
-            const truncationNotice = `\n\n... [Plan truncated - showing first ${availableForPlan} characters only. See workflow logs for full output.] ...`;
-            const maxPlanLength = availableForPlan - truncationNotice.length;
+            // Notice length depends on the number it reports, so size it with a placeholder
+            // first, then render it with the real count - otherwise the comment can exceed
+            // the cap when the digit count grows.
+            const notice = (n) => `\n\n... [Plan truncated - showing first ${n} characters only. See workflow logs for full output.] ...`;
+            const maxPlanLength = availableForPlan - notice(availableForPlan).length;
 
             if (maxPlanLength > 0) {
-              const truncatedPlan = plan.substring(0, maxPlanLength) + truncationNotice;
+              const truncatedPlan = plan.substring(0, maxPlanLength) + notice(maxPlanLength);
               output = `${baseHeader}${truncatedPlan}${baseFooter}`;
             } else {
-              output = `#### Environment: ${environment}
+              output = `${sticky ? marker + '\n' : ''}#### Environment: ${environment}
 
-              #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
 
-              Plan output is too large to display. Please check the workflow logs for the full plan.
+          Plan output is too large to display. Please check the workflow logs for the full plan.
 
-              *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
+          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
             }
           } else {
             output = `${baseHeader}${plan}${baseFooter}`;
           }
 
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: output
-          })
+          const issue_number = Number('${{ inputs.pr_number }}') || context.issue.number;
+          const { owner, repo } = context.repo;
+
+          if (sticky) {
+            // Paginate: listComments returns 30 per page by default, so on a busy PR the
+            // marker would be missed and a duplicate sticky comment created.
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: output });
+              return;
+            }
+          }
+
+          await github.rest.issues.createComment({ owner, repo, issue_number, body: output });

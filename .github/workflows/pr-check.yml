@@ -21,3 +21,4 @@ jobs:
           node tests/test-comment-length.js
           node tests/test-backtick-escaping.js
           node tests/test-refresh-configuration.js
+          node tests/test-sticky-comment.js
