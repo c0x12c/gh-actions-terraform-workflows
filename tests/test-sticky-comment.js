@@ -51,10 +51,10 @@ function assertNoInterpolation(src) {
 }
 
 /** Set the env the action declares on the step. */
-function applyEnv({ mode, marker, prNumber }) {
+function applyEnv({ mode, marker, prNumber, workingDir }) {
   Object.assign(process.env, {
     PLAN_ENVIRONMENT: 'staging',
-    PLAN_WORKING_DIR: 'live/workloads',
+    PLAN_WORKING_DIR: workingDir,
     PLAN_COMMENT_MODE: mode,
     PLAN_COMMENT_MARKER: marker,
     PLAN_PR_NUMBER: prNumber,
@@ -84,6 +84,7 @@ async function runAction({
   mode = 'sticky',
   marker = '',
   prNumber = '',
+  workingDir = 'live/workloads',
   planSize = 100,
   existingComments = [],
   contextIssue = 5,
@@ -110,7 +111,7 @@ async function runAction({
 
   const src = extractCommentScript();
   assertNoInterpolation(src);
-  applyEnv({ mode, marker, prNumber });
+  applyEnv({ mode, marker, prNumber, workingDir });
   await new Function('github', 'context', 'require', `return (async () => {${src}})()`)(github, context, require);
 
   return { call: calls[0], calls, paginateOpts };
@@ -216,6 +217,25 @@ async function test(name, fn) {
   await test('an empty pr_number falls back to the event PR', async () => {
     const { call } = await runAction({ mode: 'new', prNumber: '   ', contextIssue: 12 });
     assert.strictEqual(call.issue, 12);
+  });
+
+  await test('a multi-line comment_marker fails fast instead of never matching', async () => {
+    // Matching compares the comment's first line, so a multi-line marker could never match
+    // and would silently post a new comment every run.
+    for (const bad of ['<!-- a\nb -->', '<!-- a\r\nb -->']) {
+      await assert.rejects(
+        () => runAction({ mode: 'sticky', marker: bad }),
+        /comment_marker must be a single line/,
+      );
+    }
+  });
+
+  await test('backticks in working_dir cannot break out of the inline code span', async () => {
+    const { call } = await runAction({ mode: 'sticky', workingDir: 'live/`rm -rf`/workloads' });
+    assert.ok(
+      call.body.includes('Working Directory: `live/\\`rm -rf\\`/workloads`'),
+      `backtick was not escaped in the footer:\n${call.body.slice(-200)}`,
+    );
   });
 
   await test('whitespace-only pr_number off a PR event fails clearly, not at the API', async () => {
