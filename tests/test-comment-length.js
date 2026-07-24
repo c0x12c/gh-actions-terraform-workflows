@@ -131,7 +131,6 @@ function runTests() {
   console.log('Running comment length validation tests...\n');
 
   const mockSteps = {
-    fmt: { outcome: 'success' },
     init: { outcome: 'success' },
     validate: { outcome: 'success' },
     plan: { outcome: 'success' },
@@ -261,7 +260,6 @@ function runTests() {
   try {
     console.log('Test 7: Plan right at the boundary (no truncation needed)');
     const baseHeader = `#### Environment: DEV
-          #### Terraform Format and Style 🖌\`success\`
           #### Terraform Initialization ⚙️\`success\`
           #### Terraform Validation 🤖\`success\`
           <details><summary>Validation Output</summary>

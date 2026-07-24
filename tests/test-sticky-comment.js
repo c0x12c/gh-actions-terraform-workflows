@@ -36,18 +36,35 @@ function extractCommentScript() {
   return body.join('\n');
 }
 
-/** Substitute the ${{ }} expressions the runner would have already interpolated. */
-function interpolate(src, { mode, marker, prNumber }) {
-  return src
-    .replace(/\$\{\{ inputs\.comment_mode \}\}/g, mode)
-    .replace(/\$\{\{ inputs\.comment_marker \}\}/g, marker)
-    .replace(/\$\{\{ inputs\.environment \}\}/g, 'staging')
-    .replace(/\$\{\{ inputs\.working_dir \}\}/g, 'live/workloads')
-    .replace(/\$\{\{ inputs\.pr_number \}\}/g, prNumber)
-    .replace(/\$\{\{ steps\.\w+\.outcome \}\}/g, 'success')
-    .replace(/\$\{\{ github\.actor \}\}/g, 'tester')
-    .replace(/\$\{\{ github\.event_name \}\}/g, 'pull_request')
-    .replace(/\$\{\{ github\.workflow \}\}/g, 'Plan');
+/**
+ * The action passes every consumer-controlled value through the step's env rather than
+ * interpolating it into the script, so the script must contain no ${{ }} expressions -
+ * interpolating them would be a script-injection vector. Assert that here: if someone
+ * reintroduces one, these tests would silently stop matching the real behaviour.
+ */
+function assertNoInterpolation(src) {
+  const found = src.split('\n').filter((l) => l.includes('${{'));
+  assert.strictEqual(
+    found.length, 0,
+    `script must not interpolate expressions (script-injection risk):\n${found.join('\n')}`,
+  );
+}
+
+/** Set the env the action declares on the step. */
+function applyEnv({ mode, marker, prNumber }) {
+  Object.assign(process.env, {
+    PLAN_ENVIRONMENT: 'staging',
+    PLAN_WORKING_DIR: 'live/workloads',
+    PLAN_COMMENT_MODE: mode,
+    PLAN_COMMENT_MARKER: marker,
+    PLAN_PR_NUMBER: prNumber,
+    PLAN_INIT_OUTCOME: 'success',
+    PLAN_VALIDATE_OUTCOME: 'success',
+    PLAN_PLAN_OUTCOME: 'success',
+    PLAN_ACTOR: 'tester',
+    PLAN_EVENT_NAME: 'pull_request',
+    PLAN_WORKFLOW: 'Plan',
+  });
 }
 
 /** Read a declared input default straight out of action.yml (no YAML dependency). */
@@ -91,7 +108,9 @@ async function runAction({
   };
   const context = { repo: { owner: 'o', repo: 'r' }, issue: { number: contextIssue } };
 
-  const src = interpolate(extractCommentScript(), { mode, marker, prNumber });
+  const src = extractCommentScript();
+  assertNoInterpolation(src);
+  applyEnv({ mode, marker, prNumber });
   await new Function('github', 'context', 'require', `return (async () => {${src}})()`)(github, context, require);
 
   return { call: calls[0], calls, paginateOpts };

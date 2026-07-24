@@ -20,7 +20,6 @@ function buildPlanComment(environment, validationOutput, plan, steps, context) {
   const escapedPlan = plan.replace(/`/g, '\\`');
 
   const baseHeader = `#### Environment: ${environment}
-          #### Terraform Format and Style 🖌\`${steps.fmt.outcome}\`
           #### Terraform Initialization ⚙️\`${steps.init.outcome}\`
           #### Terraform Validation 🤖\`${steps.validate.outcome}\`
           <details><summary>Validation Output</summary>
@@ -53,7 +52,6 @@ function runTests() {
   console.log('Running backtick escaping tests...\n');
 
   const mockSteps = {
-    fmt: { outcome: 'success' },
     init: { outcome: 'success' },
     validate: { outcome: 'success' },
     plan: { outcome: 'success' }

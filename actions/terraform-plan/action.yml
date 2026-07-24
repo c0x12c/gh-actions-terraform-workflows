@@ -126,6 +126,21 @@ runs:
     - name: Post Terraform Plan Results to PR
       uses: actions/github-script@v8
       if: ${{ github.event_name == 'pull_request' || inputs.pr_number != '' }}
+      env:
+        # Passed as environment variables rather than interpolated into the script body: a
+        # value containing a quote would otherwise produce invalid JavaScript, and inputs
+        # are consumer-controlled, so interpolating them is a script-injection vector.
+        PLAN_ENVIRONMENT: ${{ inputs.environment }}
+        PLAN_WORKING_DIR: ${{ inputs.working_dir }}
+        PLAN_COMMENT_MODE: ${{ inputs.comment_mode }}
+        PLAN_COMMENT_MARKER: ${{ inputs.comment_marker }}
+        PLAN_PR_NUMBER: ${{ inputs.pr_number }}
+        PLAN_INIT_OUTCOME: ${{ steps.init.outcome }}
+        PLAN_VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+        PLAN_PLAN_OUTCOME: ${{ steps.plan.outcome }}
+        PLAN_ACTOR: ${{ github.actor }}
+        PLAN_EVENT_NAME: ${{ github.event_name }}
+        PLAN_WORKFLOW: ${{ github.workflow }}
       with:
         github-token: ${{ inputs.github_token }}
         script: |
@@ -137,21 +152,26 @@ runs:
           let plan = fs.readFileSync('/tmp/plan.out', 'utf8').replace(/`/g, '\\`')
           fs.unlinkSync('/tmp/plan.out')
 
-          const environment = '${{ inputs.environment }}'.toUpperCase()
+          const environment = process.env.PLAN_ENVIRONMENT.toUpperCase()
+          const workingDir = process.env.PLAN_WORKING_DIR
+          const initOutcome = process.env.PLAN_INIT_OUTCOME
+          const validateOutcome = process.env.PLAN_VALIDATE_OUTCOME
+          const planOutcome = process.env.PLAN_PLAN_OUTCOME
 
-          const sticky = '${{ inputs.comment_mode }}' === 'sticky';
-          // Default keeps concurrent plans on one PR in separate comments (a PR that plans
-          // several environments or roots would otherwise fight over a single comment).
-          const marker = '${{ inputs.comment_marker }}' ||
-            `<!-- terraform-plan:${{ inputs.environment }}:${{ inputs.working_dir }} -->`;
+          const sticky = process.env.PLAN_COMMENT_MODE === 'sticky';
+          // Trimmed so an accidentally padded marker still matches. The default keeps
+          // concurrent plans on one PR in separate comments (a PR that plans several
+          // environments or roots would otherwise fight over a single comment).
+          const marker = (process.env.PLAN_COMMENT_MARKER || '').trim() ||
+            `<!-- terraform-plan:${process.env.PLAN_ENVIRONMENT}:${workingDir} -->`;
 
           // GitHub comment body limit is 65536 characters
           const MAX_COMMENT_LENGTH = 65536
 
           // Calculate the base template size (without the plan content)
           const baseHeader = `${sticky ? marker + '\n' : ''}#### Environment: ${environment}
-          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
-          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
+          #### Terraform Initialization ⚙️\`${initOutcome}\`
+          #### Terraform Validation 🤖\`${validateOutcome}\`
           <details><summary>Validation Output</summary>
 
           \`\`\`\n
@@ -160,7 +180,7 @@ runs:
 
           </details>
 
-          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+          #### Terraform Plan 📖\`${planOutcome}\`
 
           <details><summary>Show Plan</summary>
 
@@ -172,7 +192,7 @@ runs:
 
           </details>
 
-          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
+          *Pusher: @${process.env.PLAN_ACTOR}, Action: \`${process.env.PLAN_EVENT_NAME}\`, Working Directory: \`${workingDir}\`, Workflow: \`${process.env.PLAN_WORKFLOW}\`*`;
 
           const baseLength = baseHeader.length + baseFooter.length;
           let output;
@@ -194,11 +214,11 @@ runs:
             } else {
               output = `${sticky ? marker + '\n' : ''}#### Environment: ${environment}
 
-          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
+          #### Terraform Plan 📖\`${planOutcome}\`
 
           Plan output is too large to display. Please check the workflow logs for the full plan.
 
-          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
+          *Pusher: @${process.env.PLAN_ACTOR}, Action: \`${process.env.PLAN_EVENT_NAME}\`, Working Directory: \`${workingDir}\`, Workflow: \`${process.env.PLAN_WORKFLOW}\`*`;
             }
           } else {
             output = `${baseHeader}${plan}${baseFooter}`;
@@ -206,7 +226,7 @@ runs:
 
           // Fail loudly on a malformed pr_number rather than silently falling back to the
           // event's PR, which would post the plan onto the wrong pull request.
-          const rawPrNumber = '${{ inputs.pr_number }}'.trim();
+          const rawPrNumber = (process.env.PLAN_PR_NUMBER || '').trim();
           let issue_number;
           if (rawPrNumber !== '') {
             issue_number = Number(rawPrNumber);
