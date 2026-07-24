@@ -20,7 +20,12 @@ function buildPlanComment(environment, validationOutput, plan, steps, context) {
   const escapedValidationOutput = validationOutput.replace(/`/g, '\\`');
   const escapedPlan = plan.replace(/`/g, '\\`');
 
-  const baseHeader = `#### Environment: ${environment}
+  // Sticky mode (the action's default) prefixes a hidden marker line, which counts toward
+  // the comment budget. Model it when the caller supplies one so boundary maths here
+  // matches the action's real sticky output.
+  const markerPrefix = context.marker ? `${context.marker}\n` : '';
+
+  const baseHeader = `${markerPrefix}#### Environment: ${environment}
           #### Terraform Initialization ⚙️\`${steps.init.outcome}\`
           #### Terraform Validation 🤖\`${steps.validate.outcome}\`
           <details><summary>Validation Output</summary>
@@ -60,7 +65,7 @@ function buildPlanComment(environment, validationOutput, plan, steps, context) {
       const truncatedPlan = escapedPlan.substring(0, maxPlanLength) + notice(maxPlanLength);
       output = `${baseHeader}${truncatedPlan}${baseFooter}`;
     } else {
-      output = `#### Environment: ${environment}
+      output = `${markerPrefix}#### Environment: ${environment}
 
 #### Terraform Plan 📖\`${steps.plan.outcome}\`
 
@@ -290,6 +295,32 @@ function runTests() {
     assert.strictEqual(comment.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${comment.length} > ${MAX_COMMENT_LENGTH}`);
     assert.strictEqual(comment.includes('truncated'), false, 'Should not truncate when fits');
     console.log(`   Comment length: ${comment.length} chars (limit: ${MAX_COMMENT_LENGTH})`);
+    console.log('✓ PASSED\n');
+    passed++;
+  } catch (error) {
+    console.log(`✗ FAILED: ${error.message}\n`);
+    failed++;
+  }
+
+  // Test 8: Sticky marker counts toward the budget
+  try {
+    console.log('Test 8: Sticky marker counts toward the comment budget');
+    const marker = '<!-- terraform-plan:dev:environments/dev -->';
+    const stickyContext = { ...mockContext, marker };
+    const plan = '+'.repeat(200000);
+
+    const sticky = buildPlanComment('DEV', 'Validation successful', plan, mockSteps, stickyContext);
+    const plain = buildPlanComment('DEV', 'Validation successful', plan, mockSteps, mockContext);
+
+    assert.strictEqual(sticky.startsWith(`${marker}\n`), true, 'Sticky output should lead with the marker');
+    assert.strictEqual(sticky.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${sticky.length}`);
+    // The marker consumes budget, so less of the plan survives than without it.
+    assert.strictEqual(
+      sticky.length - plain.length <= marker.length + 1,
+      true,
+      'Marker must be accounted for in the budget, not appended on top of a full-size comment',
+    );
+    console.log(`   Sticky: ${sticky.length} chars, plain: ${plain.length} chars (limit: ${MAX_COMMENT_LENGTH})`);
     console.log('✓ PASSED\n');
     passed++;
   } catch (error) {
