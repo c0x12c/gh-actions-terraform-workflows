@@ -218,6 +218,17 @@ async function test(name, fn) {
     assert.strictEqual(call.issue, 12);
   });
 
+  await test('whitespace-only pr_number off a PR event fails clearly, not at the API', async () => {
+    // The step-level `if:` treats "   " as non-empty and lets the step run, but the script
+    // trims it away - without a guard this reaches the API as an undefined issue number.
+    // null, not undefined: a default parameter would swallow undefined and hand the script
+    // a valid PR number, making this assertion vacuous.
+    await assert.rejects(
+      () => runAction({ mode: 'new', prNumber: '   ', contextIssue: null }),
+      /no pull request to comment on/,
+    );
+  });
+
   await test('sticky comment stays within the GitHub comment limit', async () => {
     for (const planSize of [60000, 65000, 100000, 500000]) {
       const { call } = await runAction({ mode: 'sticky', planSize });

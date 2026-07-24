@@ -234,7 +234,15 @@ runs:
               throw new Error(`pr_number must be a positive integer, got "${rawPrNumber}"`);
             }
           } else {
+            // Do not rely on the step-level `if:` matching this trim: a whitespace-only
+            // pr_number satisfies `!= ''` there, lands here, and would otherwise reach the
+            // API as an undefined issue number with a confusing error.
             issue_number = context.issue.number;
+            if (!Number.isInteger(issue_number) || issue_number <= 0) {
+              throw new Error(
+                'no pull request to comment on: pass a valid pr_number when running outside a pull_request event',
+              );
+            }
           }
           const { owner, repo } = context.repo;
 
