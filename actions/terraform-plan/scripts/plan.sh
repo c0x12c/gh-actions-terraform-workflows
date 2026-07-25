@@ -11,8 +11,12 @@ set -euo pipefail
 
 trap 'rm -f /tmp/plan.tmp /tmp/plan.raw /tmp/plan.err' EXIT
 
-plan_code=0
-terraform plan -input=false -no-color -lock=false -refresh="${REFRESH}" -out=/tmp/plan.tmp 2>&1 | tee /tmp/plan.raw || plan_code=$?
+# Capture terraform's OWN exit code via PIPESTATUS[0] - not the pipeline status, which under
+# pipefail could be tee's. set +e so a plan error doesn't abort before we read it.
+set +e
+terraform plan -input=false -no-color -lock=false -refresh="${REFRESH}" -out=/tmp/plan.tmp 2>&1 | tee /tmp/plan.raw
+plan_code=${PIPESTATUS[0]}
+set -e
 echo "plan_exitcode=${plan_code}" >> "${GITHUB_OUTPUT}"
 
 if [ "${plan_code}" -ne 0 ]; then

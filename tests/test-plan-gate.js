@@ -63,6 +63,11 @@ test('gate keys off the step outcome, and comment skips a pre-plan failure', () 
   assert.ok(/steps\.plan\.outcome\s*!=\s*'skipped'/.test(a), 'comment step must skip a pre-plan failure');
 });
 
+test('plan.sh captures terraform own exit code via PIPESTATUS, not the pipeline/tee status', () => {
+  const sh = fs.readFileSync(path.join(ROOT, 'actions', 'terraform-plan', 'scripts', 'plan.sh'), 'utf8');
+  assert.ok(/plan_code=\$\{PIPESTATUS\[0\]\}/.test(sh), 'must read PIPESTATUS[0] so tee cannot mask the plan code');
+});
+
 test('a successful plan records exit 0, renders via show, no leak', () => {
   const r = runPlan(0);
   assert.strictEqual(r.plan_exitcode, '0');
