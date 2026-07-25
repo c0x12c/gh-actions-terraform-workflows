@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v3.0.0] - 2026-07-25
+
+### Added
+
+- `terraform-plan`: `comment_mode` input (`sticky` | `new`). In `sticky` mode a single plan comment per plan is updated in place instead of a new comment being posted on every run.
+- `terraform-plan`: `comment_marker` input identifying the sticky comment. Left empty it derives `<!-- terraform-plan:<environment>:<working_dir> -->`, so concurrent plans on the same PR keep separate comments.
+- `terraform-plan`: `pr_number` input so a `workflow_dispatch`-driven plan can post a comment on a specific PR.
+
+### Changed
+
+- `terraform-plan`: `comment_mode` defaults to `sticky`. Plan comments now update in place rather than accumulating.
+- `terraform-plan`: consumer-controlled values are passed to the comment script through the step environment instead of being interpolated into it, and the sticky comment listing is paginated at 100 so the marker is not missed on a busy PR.
+
+### Fixed
+
+- `terraform-plan`: removed a "Terraform Format and Style" line that always rendered empty (it read `steps.fmt.outcome`, but the action has no `fmt` step).
+- `terraform-plan`: the truncation notice now reports the number of characters actually shown rather than the pre-notice budget, and the "output too large" fallback is no longer indented into a markdown code block.
+- `terraform-plan`: `pr_number` is validated, a multi-line `comment_marker` is rejected, and backtick-bearing metadata is escaped so it cannot break out of its inline code span.
+
+### Warning
+
+- `comment_mode` defaults to `sticky`, which is a behavior change: consumers on the default will see one plan comment per environment updated in place instead of an accumulating thread. This is why the release is a **major bump** (`v3.0.0`). Consumers pinned to `@v2` are unaffected until they move to `@v3`; to keep the previous append-on-every-run behavior after upgrading, set `comment_mode: 'new'`.
+
 ## [v2.0.0] - 2026-04-16
 
 ### Changed

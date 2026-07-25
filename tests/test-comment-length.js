@@ -20,8 +20,12 @@ function buildPlanComment(environment, validationOutput, plan, steps, context) {
   const escapedValidationOutput = validationOutput.replace(/`/g, '\\`');
   const escapedPlan = plan.replace(/`/g, '\\`');
 
-  const baseHeader = `#### Environment: ${environment}
-          #### Terraform Format and Style 🖌\`${steps.fmt.outcome}\`
+  // Sticky mode (the action's default) prefixes a hidden marker line, which counts toward
+  // the comment budget. Model it when the caller supplies one so boundary maths here
+  // matches the action's real sticky output.
+  const markerPrefix = context.marker ? `${context.marker}\n` : '';
+
+  const baseHeader = `${markerPrefix}#### Environment: ${environment}
           #### Terraform Initialization ⚙️\`${steps.init.outcome}\`
           #### Terraform Validation 🤖\`${steps.validate.outcome}\`
           <details><summary>Validation Output</summary>
@@ -52,20 +56,22 @@ function buildPlanComment(environment, validationOutput, plan, steps, context) {
   // Check if comment exceeds GitHub's limit and truncate if necessary
   if (baseLength + escapedPlan.length > MAX_COMMENT_LENGTH) {
     const availableForPlan = MAX_COMMENT_LENGTH - baseLength;
-    const truncationNotice = `\n\n... [Plan truncated - showing first ${availableForPlan} characters only. See workflow logs for full output.] ...`;
-    const maxPlanLength = availableForPlan - truncationNotice.length;
+    // Notice length depends on the number it reports, so size it with a placeholder first,
+    // then render it with the real count.
+    const notice = (n) => `\n\n... [Plan truncated - showing first ${n} characters only. See workflow logs for full output.] ...`;
+    const maxPlanLength = availableForPlan - notice(availableForPlan).length;
 
     if (maxPlanLength > 0) {
-      const truncatedPlan = escapedPlan.substring(0, maxPlanLength) + truncationNotice;
+      const truncatedPlan = escapedPlan.substring(0, maxPlanLength) + notice(maxPlanLength);
       output = `${baseHeader}${truncatedPlan}${baseFooter}`;
     } else {
-      output = `#### Environment: ${environment}
+      output = `${markerPrefix}#### Environment: ${environment}
 
-              #### Terraform Plan 📖\`${steps.plan.outcome}\`
+#### Terraform Plan 📖\`${steps.plan.outcome}\`
 
-              Plan output is too large to display. Please check the workflow logs for the full plan.
+Plan output is too large to display. Please check the workflow logs for the full plan.
 
-              *Pusher: @${context.actor}, Action: \`${context.event_name}\`, Working Directory: \`${context.working_dir}\`, Workflow: \`${context.workflow}\`*`;
+*Pusher: @${context.actor}, Action: \`${context.event_name}\`, Working Directory: \`${context.working_dir}\`, Workflow: \`${context.workflow}\`*`;
     }
   } else {
     output = `${baseHeader}${escapedPlan}${baseFooter}`;
@@ -130,7 +136,6 @@ function runTests() {
   console.log('Running comment length validation tests...\n');
 
   const mockSteps = {
-    fmt: { outcome: 'success' },
     init: { outcome: 'success' },
     validate: { outcome: 'success' },
     plan: { outcome: 'success' },
@@ -260,7 +265,6 @@ function runTests() {
   try {
     console.log('Test 7: Plan right at the boundary (no truncation needed)');
     const baseHeader = `#### Environment: DEV
-          #### Terraform Format and Style 🖌\`success\`
           #### Terraform Initialization ⚙️\`success\`
           #### Terraform Validation 🤖\`success\`
           <details><summary>Validation Output</summary>
@@ -291,6 +295,32 @@ function runTests() {
     assert.strictEqual(comment.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${comment.length} > ${MAX_COMMENT_LENGTH}`);
     assert.strictEqual(comment.includes('truncated'), false, 'Should not truncate when fits');
     console.log(`   Comment length: ${comment.length} chars (limit: ${MAX_COMMENT_LENGTH})`);
+    console.log('✓ PASSED\n');
+    passed++;
+  } catch (error) {
+    console.log(`✗ FAILED: ${error.message}\n`);
+    failed++;
+  }
+
+  // Test 8: Sticky marker counts toward the budget
+  try {
+    console.log('Test 8: Sticky marker counts toward the comment budget');
+    const marker = '<!-- terraform-plan:dev:environments/dev -->';
+    const stickyContext = { ...mockContext, marker };
+    const plan = '+'.repeat(200000);
+
+    const sticky = buildPlanComment('DEV', 'Validation successful', plan, mockSteps, stickyContext);
+    const plain = buildPlanComment('DEV', 'Validation successful', plan, mockSteps, mockContext);
+
+    assert.strictEqual(sticky.startsWith(`${marker}\n`), true, 'Sticky output should lead with the marker');
+    assert.strictEqual(sticky.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${sticky.length}`);
+    // The marker consumes budget, so less of the plan survives than without it.
+    assert.strictEqual(
+      sticky.length - plain.length <= marker.length + 1,
+      true,
+      'Marker must be accounted for in the budget, not appended on top of a full-size comment',
+    );
+    console.log(`   Sticky: ${sticky.length} chars, plain: ${plain.length} chars (limit: ${MAX_COMMENT_LENGTH})`);
     console.log('✓ PASSED\n');
     passed++;
   } catch (error) {
