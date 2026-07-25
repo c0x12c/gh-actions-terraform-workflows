@@ -138,11 +138,13 @@ test('a failed plan records its real exit code, not the show exit code', () => {
 test('a show that fails after a clean plan still fails the step (outcome gate catches it)', () => {
   // plan exits 0, show exits 1: under -e the step aborts, so plan_exitcode stays 0 but the
   // step fails -> the runner marks outcome=failure and the gate fires on it.
-  const { plan_exitcode, stepFailed, tmpLeaked } = runPlanStep(0, 1);
+  const { plan_exitcode, planOut, stepFailed, tmpLeaked } = runPlanStep(0, 1);
   assert.strictEqual(plan_exitcode, '0', 'the plan itself succeeded, so plan_exitcode is 0');
   assert.ok(stepFailed, 'a failing show must fail the step so the outcome gate can catch it');
   // set -e aborts before any trailing rm, so cleanup must be trap-based to survive here.
   assert.ok(!tmpLeaked, 'temp files must be cleaned even when the step aborts early');
+  // show writes its error to stderr; without 2>&1 plan.out is empty and the comment blank.
+  assert.ok(planOut && planOut.includes('show failed'), 'show stderr must be captured into plan.out');
 });
 
 console.log('\n' + '='.repeat(50));

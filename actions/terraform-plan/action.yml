@@ -124,7 +124,9 @@ runs:
         set -e
         echo "plan_exitcode=${code}" >> "${GITHUB_OUTPUT}"
         if [ "${code}" -eq 0 ]; then
-          terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
+          # 2>&1 so a `show` failure (which writes to stderr) still lands in plan.out and
+          # thus in the PR comment, rather than leaving it empty.
+          terraform show -no-color /tmp/plan.tmp > /tmp/plan.out 2>&1
         else
           # Preserve the failure output so it still surfaces in the PR comment.
           cp /tmp/plan.raw /tmp/plan.out
