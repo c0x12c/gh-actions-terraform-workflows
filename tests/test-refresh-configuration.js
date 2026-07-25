@@ -36,7 +36,12 @@ function runTests() {
   console.log('Running refresh configuration tests...\n');
 
   assertHasRefreshInput('actions/terraform-plan/action.yml', 'Whether to refresh the state before planning');
-  assertTerraformCommandUsesRefresh('actions/terraform-plan/action.yml', 'terraform plan');
+  // terraform-plan runs the plan from scripts/plan.sh: action.yml passes inputs.refresh as
+  // the REFRESH env, and plan.sh uses it.
+  const planAction = readAction('actions/terraform-plan/action.yml');
+  assert.match(planAction, /REFRESH: \$\{\{ inputs\.refresh \}\}/, 'action.yml should pass inputs.refresh as REFRESH env');
+  const planSh = fs.readFileSync(path.join(ROOT, 'actions', 'terraform-plan', 'scripts', 'plan.sh'), 'utf8');
+  assert.match(planSh, /terraform plan[^\n]*-refresh="\$\{REFRESH\}"/, 'plan.sh should pass REFRESH to terraform plan');
 
   assertHasRefreshInput('actions/terraform-plan-gcp/action.yml', 'Whether to refresh the state before planning');
   assertTerraformCommandUsesRefresh('actions/terraform-plan-gcp/action.yml', 'terraform plan');

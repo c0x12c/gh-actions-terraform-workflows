@@ -16,9 +16,13 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Shellcheck action scripts
+        run: shellcheck actions/*/scripts/*.sh
+
       - name: Run Tests
         run: |
           node tests/test-comment-length.js
           node tests/test-backtick-escaping.js
           node tests/test-refresh-configuration.js
           node tests/test-sticky-comment.js
+          node tests/test-plan-gate.js

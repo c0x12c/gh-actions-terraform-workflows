@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v3.0.1] - 2026-07-25
+
+### Fixed
+
+- `terraform-plan`: the "Check for Plan Failure" gate could miss a failed plan. It read `steps.plan.outputs.exitcode`, which the `setup-terraform` wrapper populates from the last terraform command in the step (the `terraform show`), not the plan - so a plan that errored but was followed by a successful `show` would report success. The plan now runs in `scripts/plan.sh`, which exits non-zero on any failure, and the gate keys off the step outcome. Failure output is preserved so it still appears in the PR comment.
+- `terraform-plan`: the plan comment no longer runs (and crashes on a missing plan file) after a *pre-plan* failure such as an init/creds/decrypt error - it is skipped unless the plan step actually ran.
+
+### Changed
+
+- `terraform-plan`: the inline plan shell and PR-comment JavaScript are extracted to `actions/terraform-plan/scripts/{plan.sh,post-comment.js}` (invoked via `$GITHUB_ACTION_PATH`), so they are shellcheck'd / unit-tested directly instead of being embedded in `action.yml`. Behavior is unchanged.
+
 ## [v3.0.0] - 2026-07-25
 
 ### Added
