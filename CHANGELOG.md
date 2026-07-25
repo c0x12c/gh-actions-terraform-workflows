@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## [Unreleased]
+## [v3.0.0] - 2026-07-25
 
 ### Added
 
@@ -25,7 +25,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Warning
 
-- `comment_mode` defaults to `sticky`, which is a behavior change: consumers on the default will see one plan comment per environment updated in place instead of an accumulating thread. Set `comment_mode: 'new'` to keep the previous append-on-every-run behavior. Publish this as a **major release** and move consumers to the new `@v3` tag once the sticky behavior is reviewed.
+- `comment_mode` defaults to `sticky`, which is a behavior change: consumers on the default will see one plan comment per environment updated in place instead of an accumulating thread. This is why the release is a **major bump** (`v3.0.0`). Consumers pinned to `@v2` are unaffected until they move to `@v3`; to keep the previous append-on-every-run behavior after upgrading, set `comment_mode: 'new'`.
 
 ## [v2.0.0] - 2026-04-16
 
