@@ -39,7 +39,8 @@ module.exports = async ({ github, context }) => {
 
   // Values that render inside inline-code spans; an embedded backtick would break the span.
   const inline = (v) => String(v ?? '').replace(/`/g, '\\`');
-  const footer = `\n\`\`\`\n\n</details>\n\n*Pusher: @${env.PLAN_ACTOR}, Action: \`${inline(env.PLAN_EVENT_NAME)}\`, Working Directory: \`${inline(workingDir)}\`, Workflow: \`${inline(env.PLAN_WORKFLOW)}\`*`;
+  const meta = `*Pusher: @${env.PLAN_ACTOR}, Action: \`${inline(env.PLAN_EVENT_NAME)}\`, Working Directory: \`${inline(workingDir)}\`, Workflow: \`${inline(env.PLAN_WORKFLOW)}\`*`;
+  const footer = `\n\`\`\`\n\n</details>\n\n${meta}`;
   const header = `${sticky ? marker + '\n' : ''}#### Environment: ${environment}
 #### Terraform Initialization ⚙️\`${env.PLAN_INIT_OUTCOME}\`
 #### Terraform Validation 🤖\`${env.PLAN_VALIDATE_OUTCOME}\`
@@ -67,7 +68,7 @@ ${validationOutput}
     const maxPlan = available - notice(available).length;
     output = maxPlan > 0
       ? `${header}${plan.substring(0, maxPlan)}${notice(maxPlan)}${footer}`
-      : `${sticky ? marker + '\n' : ''}#### Environment: ${environment}\n\n#### Terraform Plan 📖\`${env.PLAN_PLAN_OUTCOME}\`\n\nPlan output is too large to display. Please check the workflow logs for the full plan.\n\n*Pusher: @${env.PLAN_ACTOR}*`;
+      : `${sticky ? marker + '\n' : ''}#### Environment: ${environment}\n\n#### Terraform Plan 📖\`${env.PLAN_PLAN_OUTCOME}\`\n\nPlan output is too large to display. Please check the workflow logs for the full plan.\n\n${meta}`;
   } else {
     output = `${header}${plan}${footer}`;
   }
