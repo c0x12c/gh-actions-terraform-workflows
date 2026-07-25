@@ -74,7 +74,9 @@ ${validationOutput}
   }
 
   // Resolve the PR: a valid pr_number wins; otherwise the event's PR. Fail loudly rather than
-  // posting onto the wrong PR (or undefined) - the step `if:` trims pr_number the same way.
+  // posting onto the wrong PR (or undefined). The step `if:` only checks pr_number != '' (no
+  // trim), so a whitespace-only value reaches here and trims to empty - hence the fallback +
+  // guard below.
   const raw = (env.PLAN_PR_NUMBER || '').trim();
   let issue_number;
   if (raw !== '') {
