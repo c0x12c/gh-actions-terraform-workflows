@@ -47,6 +47,7 @@ async function run({ mode = 'sticky', marker = '', prNumber = '', workingDir = '
 function declaredDefault(name) {
   const lines = fs.readFileSync(ACTION, 'utf8').split('\n');
   const i = lines.findIndex((l) => l.trim() === `${name}:`);
+  assert.ok(i !== -1, `input ${name} not declared in action.yml`);
   for (const l of lines.slice(i + 1)) {
     if (/^\s{2}\S/.test(l)) break;
     const m = l.match(/^\s+default:\s*"?([^"]*)"?\s*$/);

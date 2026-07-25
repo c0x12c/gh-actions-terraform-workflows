@@ -83,6 +83,7 @@ test('a show failure after a clean plan fails the step (caught by the outcome ga
   const r = runPlan(0, 1);
   assert.strictEqual(r.plan_exitcode, '0', 'the plan itself succeeded');
   assert.ok(r.stepFailed, 'a failing show must fail the step');
+  assert.ok(r.planOut && r.planOut.includes('show failed'), 'show stderr appended to plan.out on failure');
   assert.ok(!r.tmpLeaked, 'temp files cleaned even on early abort');
 });
 

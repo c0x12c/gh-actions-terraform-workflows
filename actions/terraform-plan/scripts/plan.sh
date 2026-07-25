@@ -9,7 +9,7 @@
 # Reads: REFRESH, GITHUB_OUTPUT. Writes: /tmp/plan.out (kept for the comment step).
 set -euo pipefail
 
-trap 'rm -f /tmp/plan.tmp /tmp/plan.raw' EXIT
+trap 'rm -f /tmp/plan.tmp /tmp/plan.raw /tmp/plan.err' EXIT
 
 plan_code=0
 terraform plan -input=false -no-color -lock=false -refresh="${REFRESH}" -out=/tmp/plan.tmp 2>&1 | tee /tmp/plan.raw || plan_code=$?
@@ -20,5 +20,12 @@ if [ "${plan_code}" -ne 0 ]; then
   exit "${plan_code}"
 fi
 
-# Success: render the plan file. A show failure aborts under set -e -> outcome=failure.
-terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
+# Success: render the plan. On the happy path plan.out is the show stdout only (no stderr
+# warnings polluting the comment); only if show fails do we append its stderr, so the error
+# still surfaces in the comment, then exit non-zero -> outcome=failure -> the gate fires.
+show_code=0
+terraform show -no-color /tmp/plan.tmp > /tmp/plan.out 2>/tmp/plan.err || show_code=$?
+if [ "${show_code}" -ne 0 ]; then
+  cat /tmp/plan.err >> /tmp/plan.out
+  exit "${show_code}"
+fi
