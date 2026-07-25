@@ -121,7 +121,7 @@ runs:
       if: steps.plan.outcome == 'failure'
       shell: bash
       run: |
-        echo "::error:: Terraform plan failed (exit ${{ steps.plan.outputs.plan_exitcode }})"
+        echo "::error:: Terraform plan step failed - see the plan output in the PR comment and the logs (plan_exitcode=${{ steps.plan.outputs.plan_exitcode }}; 0 means a post-plan error such as terraform show)"
         exit 1
 
     # Comment when the plan actually ran (success or failure) - not after a pre-plan failure

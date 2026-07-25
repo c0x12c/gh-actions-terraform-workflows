@@ -24,13 +24,18 @@ module.exports = async ({ github, context }) => {
     throw new Error('comment_marker must be a single line');
   }
 
-  const readFile = (p) => (fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '');
+  // Read then remove the temp files (consistent with the repo's other actions).
+  const consume = (p) => {
+    if (!fs.existsSync(p)) return '';
+    const v = fs.readFileSync(p, 'utf8');
+    fs.rmSync(p, { force: true });
+    return v;
+  };
   const esc = (s) => s.replace(/`/g, '\\`');
-  const validationOutput = esc(readFile('/tmp/validate_output.txt'));
+  const validationOutput = esc(consume('/tmp/validate_output.txt'));
   // May be absent if an earlier step failed before the plan ran; post a notice rather than crash.
-  const plan = fs.existsSync('/tmp/plan.out')
-    ? esc(readFile('/tmp/plan.out'))
-    : 'Plan did not run - an earlier step failed. See the workflow logs.';
+  const planRaw = consume('/tmp/plan.out');
+  const plan = planRaw ? esc(planRaw) : 'Plan did not run - an earlier step failed. See the workflow logs.';
 
   // Values that render inside inline-code spans; an embedded backtick would break the span.
   const inline = (v) => String(v ?? '').replace(/`/g, '\\`');

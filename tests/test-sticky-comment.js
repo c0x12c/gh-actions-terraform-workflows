@@ -40,7 +40,11 @@ async function run({ mode = 'sticky', marker = '', prNumber = '', workingDir = '
       createComment: async (o) => calls.push({ op: 'create', issue: o.issue_number, body: o.body }),
     } },
   };
-  await post({ github, context: { repo: { owner: 'o', repo: 'r' }, issue: { number: contextIssue } } });
+  try {
+    await post({ github, context: { repo: { owner: 'o', repo: 'r' }, issue: { number: contextIssue } } });
+  } finally {
+    for (const f of ['/tmp/plan.out', '/tmp/validate_output.txt']) fs.rmSync(f, { force: true });
+  }
   return { call: calls[0], calls, pageOpts };
 }
 
