@@ -16,6 +16,9 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Shellcheck action scripts
+        run: shellcheck actions/*/scripts/*.sh
+
       - name: Run Tests
         run: |
           node tests/test-comment-length.js

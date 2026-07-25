@@ -109,51 +109,30 @@ runs:
     - name: Terraform Plan
       id: plan
       shell: bash
-      run: |
-        # Capture the plan's OWN exit code and gate on it. Relying on
-        # steps.plan.outputs.exitcode is unsafe: the setup-terraform wrapper sets that from
-        # the LAST terraform command in the step (the `show` below), not the plan, so a
-        # failed plan could go unreported. Record the plan code explicitly instead.
-        # Clean the fixed-path temp files via a trap so they never leak, even when `set -e`
-        # aborts the step early (e.g. a failing `show`) before a trailing rm would run. Only
-        # plan.out is kept, for the comment step.
-        trap 'rm -f /tmp/plan.tmp /tmp/plan.raw' EXIT
-        set +e
-        terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out=/tmp/plan.tmp 2>&1 | tee /tmp/plan.raw
-        code=${PIPESTATUS[0]}
-        set -e
-        echo "plan_exitcode=${code}" >> "${GITHUB_OUTPUT}"
-        if [ "${code}" -eq 0 ]; then
-          # 2>&1 so a `show` failure (which writes to stderr) still lands in plan.out and
-          # thus in the PR comment, rather than leaving it empty.
-          terraform show -no-color /tmp/plan.tmp > /tmp/plan.out 2>&1
-        else
-          # Preserve the failure output so it still surfaces in the PR comment.
-          cp /tmp/plan.raw /tmp/plan.out
-        fi
-      continue-on-error: true
       working-directory: ${{ inputs.working_dir }}
+      continue-on-error: true
+      env:
+        REFRESH: ${{ inputs.refresh }}
+      run: bash "${GITHUB_ACTION_PATH}/scripts/plan.sh"
 
-    # Fail on a plan error (plan_exitcode) OR any other failure inside the plan step, e.g. a
-    # `terraform show` that fails after a successful plan - continue-on-error keeps the job
-    # alive to here, so outcome == 'failure' is how those non-plan failures surface.
+    # plan.sh exits non-zero on any failure (plan error, or a failing show), so the step
+    # outcome is the single reliable signal - see actions/terraform-plan/scripts/plan.sh.
     - name: Check for Plan Failure
-      if: steps.plan.outputs.plan_exitcode != '0' || steps.plan.outcome == 'failure'
+      if: steps.plan.outcome == 'failure'
       shell: bash
       run: |
-        echo "::error:: Terraform plan failed (exit ${{ steps.plan.outputs.plan_exitcode }}, outcome ${{ steps.plan.outcome }})"
+        echo "::error:: Terraform plan failed (exit ${{ steps.plan.outputs.plan_exitcode }})"
         exit 1
 
-    # always(): the failure gate above exits 1 on a plan/show error, so without always()
-    # this step would be skipped and the preserved failure output would never post. Running
-    # it regardless lets a failed plan still surface its error in the PR comment.
+    # Comment when the plan actually ran (success or failure) - not after a pre-plan failure
+    # that skips it, which would leave post-comment.js nothing to read. Runs even though the
+    # gate above exited 1, so a failed plan still surfaces its error in the PR.
     - name: Post Terraform Plan Results to PR
       uses: actions/github-script@v8
-      if: ${{ always() && (github.event_name == 'pull_request' || inputs.pr_number != '') }}
+      if: ${{ !cancelled() && steps.plan.outcome != 'skipped' && (github.event_name == 'pull_request' || inputs.pr_number != '') }}
       env:
-        # Passed as environment variables rather than interpolated into the script body: a
-        # value containing a quote would otherwise produce invalid JavaScript, and inputs
-        # are consumer-controlled, so interpolating them is a script-injection vector.
+        # Passed via env, never interpolated into the script body: consumer-controlled inputs
+        # in a github-script body are a script-injection vector.
         PLAN_ENVIRONMENT: ${{ inputs.environment }}
         PLAN_WORKING_DIR: ${{ inputs.working_dir }}
         PLAN_COMMENT_MODE: ${{ inputs.comment_mode }}
@@ -168,131 +147,4 @@ runs:
       with:
         github-token: ${{ inputs.github_token }}
         script: |
-          const fs = require('fs')
-
-          const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8').replace(/`/g, '\\`')
-          fs.unlinkSync('/tmp/validate_output.txt')
-
-          let plan = fs.readFileSync('/tmp/plan.out', 'utf8').replace(/`/g, '\\`')
-          fs.unlinkSync('/tmp/plan.out')
-
-          const environment = process.env.PLAN_ENVIRONMENT.toUpperCase()
-          const workingDir = process.env.PLAN_WORKING_DIR
-          const initOutcome = process.env.PLAN_INIT_OUTCOME
-          const validateOutcome = process.env.PLAN_VALIDATE_OUTCOME
-          const planOutcome = process.env.PLAN_PLAN_OUTCOME
-
-          const sticky = process.env.PLAN_COMMENT_MODE === 'sticky';
-          // Trimmed so an accidentally padded marker still matches. The default keeps
-          // concurrent plans on one PR in separate comments (a PR that plans several
-          // environments or roots would otherwise fight over a single comment).
-          const marker = (process.env.PLAN_COMMENT_MARKER || '').trim() ||
-            `<!-- terraform-plan:${process.env.PLAN_ENVIRONMENT}:${workingDir} -->`;
-          // The sticky comment is matched on its first line, so a multi-line marker could
-          // never match and would silently post a new comment on every run.
-          if (sticky && /[\r\n]/.test(marker)) {
-            throw new Error('comment_marker must be a single line');
-          }
-
-          // These render inside inline-code spans; an embedded backtick would break out of
-          // the span and mangle the comment, so escape them like the plan output.
-          const inline = (v) => String(v ?? '').replace(/`/g, '\\`');
-
-          // GitHub comment body limit is 65536 characters
-          const MAX_COMMENT_LENGTH = 65536
-
-          // Calculate the base template size (without the plan content)
-          const baseHeader = `${sticky ? marker + '\n' : ''}#### Environment: ${environment}
-          #### Terraform Initialization ⚙️\`${initOutcome}\`
-          #### Terraform Validation 🤖\`${validateOutcome}\`
-          <details><summary>Validation Output</summary>
-
-          \`\`\`\n
-          ${validationOutput}
-          \`\`\`
-
-          </details>
-
-          #### Terraform Plan 📖\`${planOutcome}\`
-
-          <details><summary>Show Plan</summary>
-
-          \`\`\`\n
-          `;
-
-          const baseFooter = `
-          \`\`\`
-
-          </details>
-
-          *Pusher: @${process.env.PLAN_ACTOR}, Action: \`${inline(process.env.PLAN_EVENT_NAME)}\`, Working Directory: \`${inline(workingDir)}\`, Workflow: \`${inline(process.env.PLAN_WORKFLOW)}\`*`;
-
-          const baseLength = baseHeader.length + baseFooter.length;
-          let output;
-
-          // Check if comment exceeds GitHub's limit and truncate if necessary. The decision
-          // is made against the note-less budget: the truncation notice only exists when we
-          // truncate, so reserving room for it up front would truncate a plan that fits.
-          if (baseLength + plan.length > MAX_COMMENT_LENGTH) {
-            const availableForPlan = MAX_COMMENT_LENGTH - baseLength;
-            // Notice length depends on the number it reports, so size it with a placeholder
-            // first, then render it with the real count - otherwise the comment can exceed
-            // the cap when the digit count grows.
-            const notice = (n) => `\n\n... [Plan truncated - showing first ${n} characters only. See workflow logs for full output.] ...`;
-            const maxPlanLength = availableForPlan - notice(availableForPlan).length;
-
-            if (maxPlanLength > 0) {
-              const truncatedPlan = plan.substring(0, maxPlanLength) + notice(maxPlanLength);
-              output = `${baseHeader}${truncatedPlan}${baseFooter}`;
-            } else {
-              output = `${sticky ? marker + '\n' : ''}#### Environment: ${environment}
-
-          #### Terraform Plan 📖\`${planOutcome}\`
-
-          Plan output is too large to display. Please check the workflow logs for the full plan.
-
-          *Pusher: @${process.env.PLAN_ACTOR}, Action: \`${inline(process.env.PLAN_EVENT_NAME)}\`, Working Directory: \`${inline(workingDir)}\`, Workflow: \`${inline(process.env.PLAN_WORKFLOW)}\`*`;
-            }
-          } else {
-            output = `${baseHeader}${plan}${baseFooter}`;
-          }
-
-          // Fail loudly on a malformed pr_number rather than silently falling back to the
-          // event's PR, which would post the plan onto the wrong pull request.
-          const rawPrNumber = (process.env.PLAN_PR_NUMBER || '').trim();
-          let issue_number;
-          if (rawPrNumber !== '') {
-            issue_number = Number(rawPrNumber);
-            if (!Number.isInteger(issue_number) || issue_number <= 0) {
-              throw new Error(`pr_number must be a positive integer, got "${rawPrNumber}"`);
-            }
-          } else {
-            // Do not rely on the step-level `if:` matching this trim: a whitespace-only
-            // pr_number satisfies `!= ''` there, lands here, and would otherwise reach the
-            // API as an undefined issue number with a confusing error.
-            issue_number = context.issue.number;
-            if (!Number.isInteger(issue_number) || issue_number <= 0) {
-              throw new Error(
-                'no pull request to comment on: pass a valid pr_number when running outside a pull_request event',
-              );
-            }
-          }
-          const { owner, repo } = context.repo;
-
-          if (sticky) {
-            // Paginate: listComments returns 30 per page by default, so on a busy PR the
-            // marker would be missed and a duplicate sticky comment created.
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner, repo, issue_number, per_page: 100,
-            });
-            // Match the marker as the comment's first line, not anywhere in the body: the
-            // plan text is embedded verbatim, so a substring match could latch onto an
-            // unrelated comment that merely quotes the marker.
-            const existing = comments.find((c) => c.body && c.body.split('\n')[0].trim() === marker);
-            if (existing) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: output });
-              return;
-            }
-          }
-
-          await github.rest.issues.createComment({ owner, repo, issue_number, body: output });
+          await require(`${process.env.GITHUB_ACTION_PATH}/scripts/post-comment.js`)({ github, context });
