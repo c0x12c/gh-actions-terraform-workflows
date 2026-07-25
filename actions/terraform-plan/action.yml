@@ -114,6 +114,10 @@ runs:
         # steps.plan.outputs.exitcode is unsafe: the setup-terraform wrapper sets that from
         # the LAST terraform command in the step (the `show` below), not the plan, so a
         # failed plan could go unreported. Record the plan code explicitly instead.
+        # Clean the fixed-path temp files via a trap so they never leak, even when `set -e`
+        # aborts the step early (e.g. a failing `show`) before a trailing rm would run. Only
+        # plan.out is kept, for the comment step.
+        trap 'rm -f /tmp/plan.tmp /tmp/plan.raw' EXIT
         set +e
         terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out=/tmp/plan.tmp 2>&1 | tee /tmp/plan.raw
         code=${PIPESTATUS[0]}
@@ -125,11 +129,6 @@ runs:
           # Preserve the failure output so it still surfaces in the PR comment.
           cp /tmp/plan.raw /tmp/plan.out
         fi
-        # Clean both fixed-path temp files in every path (a stale plan.tmp/plan.raw could
-        # otherwise leak across invocations on a self-hosted runner). plan.out is kept for
-        # the comment step. Under set -e a failing `show` above aborts here first; that
-        # failure is caught by the outcome check on the gate below.
-        rm -f /tmp/plan.tmp /tmp/plan.raw
       continue-on-error: true
       working-directory: ${{ inputs.working_dir }}
 
