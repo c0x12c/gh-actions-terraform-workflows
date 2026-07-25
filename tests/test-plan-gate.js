@@ -36,12 +36,15 @@ function extractRunBlock(stepName) {
   return body.join('\n');
 }
 
-/** Run the plan step with a fake terraform whose `plan` exits with `planCode`. */
-function runPlanStep(planCode) {
+/**
+ * Run the plan step with a fake terraform whose `plan` exits `planCode` and `show` exits
+ * `showCode`. The script runs under the SAME shell flags GitHub Actions uses for a bash
+ * step (`-e -o pipefail`), so shell-behavior regressions (e.g. a failing `show` aborting
+ * the step) are exercised the way the runner would see them.
+ */
+function runPlanStep(planCode, showCode = 0) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-gate-'));
   const bin = path.join(dir, 'terraform');
-  // Fake terraform: `plan` writes the out-file (on success) and exits planCode; `show`
-  // renders. Mirrors the real contract the step depends on.
   fs.writeFileSync(bin, `#!/usr/bin/env bash
 cmd="$1"
 if [ "$cmd" = "plan" ]; then
@@ -53,8 +56,8 @@ if [ "$cmd" = "plan" ]; then
   fi
   exit ${planCode}
 elif [ "$cmd" = "show" ]; then
-  echo "rendered plan from show"
-  exit 0
+  if [ "${showCode}" -eq 0 ]; then echo "rendered plan from show"; else echo "show failed" >&2; fi
+  exit ${showCode}
 fi
 exit 0
 `);
@@ -68,15 +71,22 @@ exit 0
     try { fs.unlinkSync(f); } catch { /* ignore */ }
   }
 
-  execFileSync('bash', ['-c', script], {
-    env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, GITHUB_OUTPUT: outFile },
-    stdio: 'pipe',
-  });
+  // GitHub Actions runs a bash `run:` step as `bash --noprofile --norc -e -o pipefail`.
+  let threw = false;
+  try {
+    execFileSync('bash', ['--noprofile', '--norc', '-e', '-o', 'pipefail', '-c', script], {
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, GITHUB_OUTPUT: outFile },
+      stdio: 'pipe',
+    });
+  } catch {
+    threw = true; // non-zero exit -> the runner would mark steps.plan.outcome == 'failure'
+  }
 
   const ghOutput = fs.readFileSync(outFile, 'utf8');
   const planOut = fs.existsSync('/tmp/plan.out') ? fs.readFileSync('/tmp/plan.out', 'utf8') : null;
+  const tmpLeaked = fs.existsSync('/tmp/plan.tmp') || fs.existsSync('/tmp/plan.raw');
   const m = ghOutput.match(/plan_exitcode=(\d+)/);
-  return { plan_exitcode: m ? m[1] : null, planOut };
+  return { plan_exitcode: m ? m[1] : null, planOut, stepFailed: threw, tmpLeaked };
 }
 
 let passed = 0;
@@ -88,28 +98,39 @@ function test(name, fn) {
 
 console.log('Running plan-gate tests...\n');
 
-test('the gate reads plan_exitcode, not the wrapper-provided exitcode', () => {
+test('the gate reads plan_exitcode and the step outcome, not the wrapper exitcode', () => {
   const action = fs.readFileSync(ACTION, 'utf8');
   assert.ok(
-    /if:\s*steps\.plan\.outputs\.plan_exitcode\s*!=\s*'0'/.test(action),
-    'Check for Plan Failure must gate on the explicitly-captured plan_exitcode',
+    /if:\s*steps\.plan\.outputs\.plan_exitcode\s*!=\s*'0'\s*\|\|\s*steps\.plan\.outcome\s*==\s*'failure'/.test(action),
+    'gate must key off the captured plan_exitcode AND the step outcome',
   );
   assert.ok(
-    !/if:\s*steps\.plan\.outputs\.exitcode\s*==\s*1/.test(action),
+    !/steps\.plan\.outputs\.exitcode\s*==\s*1/.test(action),
     'the old wrapper-based gate must be gone',
   );
 });
 
 test('a successful plan records exit 0 and renders via terraform show', () => {
-  const { plan_exitcode, planOut } = runPlanStep(0);
+  const { plan_exitcode, planOut, stepFailed, tmpLeaked } = runPlanStep(0);
   assert.strictEqual(plan_exitcode, '0');
+  assert.ok(!stepFailed, 'a clean plan+show should not fail the step');
   assert.ok(planOut && planOut.includes('rendered plan from show'), 'plan.out should hold the show render');
+  assert.ok(!tmpLeaked, 'plan.tmp / plan.raw must be cleaned up');
 });
 
 test('a failed plan records its real exit code, not the show exit code', () => {
-  const { plan_exitcode, planOut } = runPlanStep(1);
+  const { plan_exitcode, planOut, tmpLeaked } = runPlanStep(1);
   assert.strictEqual(plan_exitcode, '1', 'must capture the plan exit code (1), not show (0)');
   assert.ok(planOut && planOut.includes('something broke'), 'failure output must be preserved for the comment');
+  assert.ok(!tmpLeaked, 'plan.tmp / plan.raw must be cleaned up on the failure path too');
+});
+
+test('a show that fails after a clean plan still fails the step (outcome gate catches it)', () => {
+  // plan exits 0, show exits 1: under -e the step aborts, so plan_exitcode stays 0 but the
+  // step fails -> the runner marks outcome=failure and the gate fires on it.
+  const { plan_exitcode, stepFailed } = runPlanStep(0, 1);
+  assert.strictEqual(plan_exitcode, '0', 'the plan itself succeeded, so plan_exitcode is 0');
+  assert.ok(stepFailed, 'a failing show must fail the step so the outcome gate can catch it');
 });
 
 console.log('\n' + '='.repeat(50));

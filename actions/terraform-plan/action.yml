@@ -121,19 +121,26 @@ runs:
         echo "plan_exitcode=${code}" >> "${GITHUB_OUTPUT}"
         if [ "${code}" -eq 0 ]; then
           terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
-          rm -f /tmp/plan.tmp
         else
           # Preserve the failure output so it still surfaces in the PR comment.
           cp /tmp/plan.raw /tmp/plan.out
         fi
+        # Clean both fixed-path temp files in every path (a stale plan.tmp/plan.raw could
+        # otherwise leak across invocations on a self-hosted runner). plan.out is kept for
+        # the comment step. Under set -e a failing `show` above aborts here first; that
+        # failure is caught by the outcome check on the gate below.
+        rm -f /tmp/plan.tmp /tmp/plan.raw
       continue-on-error: true
       working-directory: ${{ inputs.working_dir }}
 
+    # Fail on a plan error (plan_exitcode) OR any other failure inside the plan step, e.g. a
+    # `terraform show` that fails after a successful plan - continue-on-error keeps the job
+    # alive to here, so outcome == 'failure' is how those non-plan failures surface.
     - name: Check for Plan Failure
-      if: steps.plan.outputs.plan_exitcode != '0'
+      if: steps.plan.outputs.plan_exitcode != '0' || steps.plan.outcome == 'failure'
       shell: bash
       run: |
-        echo "::error:: Terraform plan failed (exit ${{ steps.plan.outputs.plan_exitcode }})"
+        echo "::error:: Terraform plan failed (exit ${{ steps.plan.outputs.plan_exitcode }}, outcome ${{ steps.plan.outcome }})"
         exit 1
 
     - name: Post Terraform Plan Results to PR
