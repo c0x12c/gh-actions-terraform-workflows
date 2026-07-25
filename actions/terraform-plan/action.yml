@@ -110,17 +110,30 @@ runs:
       id: plan
       shell: bash
       run: |
-        terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out=/tmp/plan.tmp
-        terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
-        rm -f /tmp/plan.tmp
+        # Capture the plan's OWN exit code and gate on it. Relying on
+        # steps.plan.outputs.exitcode is unsafe: the setup-terraform wrapper sets that from
+        # the LAST terraform command in the step (the `show` below), not the plan, so a
+        # failed plan could go unreported. Record the plan code explicitly instead.
+        set +e
+        terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out=/tmp/plan.tmp 2>&1 | tee /tmp/plan.raw
+        code=${PIPESTATUS[0]}
+        set -e
+        echo "plan_exitcode=${code}" >> "${GITHUB_OUTPUT}"
+        if [ "${code}" -eq 0 ]; then
+          terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
+          rm -f /tmp/plan.tmp
+        else
+          # Preserve the failure output so it still surfaces in the PR comment.
+          cp /tmp/plan.raw /tmp/plan.out
+        fi
       continue-on-error: true
       working-directory: ${{ inputs.working_dir }}
 
     - name: Check for Plan Failure
-      if: steps.plan.outputs.exitcode == 1
+      if: steps.plan.outputs.plan_exitcode != '0'
       shell: bash
       run: |
-        echo "::error:: Terraform plan failed"
+        echo "::error:: Terraform plan failed (exit ${{ steps.plan.outputs.plan_exitcode }})"
         exit 1
 
     - name: Post Terraform Plan Results to PR

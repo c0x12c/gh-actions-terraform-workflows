@@ -22,3 +22,4 @@ jobs:
           node tests/test-backtick-escaping.js
           node tests/test-refresh-configuration.js
           node tests/test-sticky-comment.js
+          node tests/test-plan-gate.js

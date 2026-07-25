@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v3.0.1] - 2026-07-25
+
+### Fixed
+
+- `terraform-plan`: the "Check for Plan Failure" gate could miss a failed plan. It read `steps.plan.outputs.exitcode`, which the `setup-terraform` wrapper populates from the last terraform command in the step (the `terraform show`), not the plan - so a plan that errored but was followed by a successful `show` would report success. The plan step now captures its own exit code explicitly (`plan_exitcode`) and the gate keys off that; failure output is preserved so it still appears in the PR comment.
+
 ## [v3.0.0] - 2026-07-25
 
 ### Added
