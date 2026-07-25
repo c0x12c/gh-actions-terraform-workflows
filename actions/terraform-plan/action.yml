@@ -142,9 +142,12 @@ runs:
         echo "::error:: Terraform plan failed (exit ${{ steps.plan.outputs.plan_exitcode }}, outcome ${{ steps.plan.outcome }})"
         exit 1
 
+    # always(): the failure gate above exits 1 on a plan/show error, so without always()
+    # this step would be skipped and the preserved failure output would never post. Running
+    # it regardless lets a failed plan still surface its error in the PR comment.
     - name: Post Terraform Plan Results to PR
       uses: actions/github-script@v8
-      if: ${{ github.event_name == 'pull_request' || inputs.pr_number != '' }}
+      if: ${{ always() && (github.event_name == 'pull_request' || inputs.pr_number != '') }}
       env:
         # Passed as environment variables rather than interpolated into the script body: a
         # value containing a quote would otherwise produce invalid JavaScript, and inputs

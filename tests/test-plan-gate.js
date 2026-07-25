@@ -110,6 +110,16 @@ test('the gate reads plan_exitcode and the step outcome, not the wrapper exitcod
   );
 });
 
+test('the comment step runs on failure so a failed plan still posts its error', () => {
+  const action = fs.readFileSync(ACTION, 'utf8');
+  const m = action.match(/Post Terraform Plan Results to PR[\s\S]*?if:\s*(.+)/);
+  assert.ok(m, 'comment step if: not found');
+  assert.ok(
+    /always\(\)/.test(m[1]),
+    'comment step must use always() - the gate exits 1 first, else the failure comment is skipped',
+  );
+});
+
 test('a successful plan records exit 0 and renders via terraform show', () => {
   const { plan_exitcode, planOut, stepFailed, tmpLeaked } = runPlanStep(0);
   assert.strictEqual(plan_exitcode, '0');
