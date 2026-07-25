@@ -86,6 +86,13 @@ exit 0
   const planOut = fs.existsSync('/tmp/plan.out') ? fs.readFileSync('/tmp/plan.out', 'utf8') : null;
   const tmpLeaked = fs.existsSync('/tmp/plan.tmp') || fs.existsSync('/tmp/plan.raw');
   const m = ghOutput.match(/plan_exitcode=(\d+)/);
+
+  // Read tmpLeaked before this: clean our own scratch so repeated local runs don't pile up
+  // plan-gate-* dirs, and don't leave the fixed /tmp/plan.* paths behind for the next test.
+  fs.rmSync(dir, { recursive: true, force: true });
+  for (const f of ['/tmp/plan.tmp', '/tmp/plan.raw', '/tmp/plan.out']) {
+    fs.rmSync(f, { force: true });
+  }
   return { plan_exitcode: m ? m[1] : null, planOut, stepFailed: threw, tmpLeaked };
 }
 
