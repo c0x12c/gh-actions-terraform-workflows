@@ -1,0 +1,54 @@
+name: Release
+
+# Tags + GitHub Release driven by CHANGELOG.md. Finalizing the top "## [vX.Y.Z]" section on
+# master cuts the tag, moves the vX.Y / vX aliases (consumers pin @vN), and publishes the
+# release from that section. While the top heading is "## [Unreleased]" this is a no-op.
+# tools/changelog-release.sh is idempotent + monotonic; workflow_dispatch (dry_run) is the
+# manual fallback. Single job under GITHUB_TOKEN - no App token, no tag-triggered publish.
+on:
+  push:
+    branches: [ master ]
+    paths: [ 'CHANGELOG.md' ]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Log the parsed version + verdict + notes; change nothing.'
+        type: boolean
+        default: false
+
+# Serialize releases so overlapping runs never force-move vX / vX.Y concurrently.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    if: github.repository_owner == 'c0x12c'
+    runs-on: ubuntu-latest
+    steps:
+      # workflow_dispatch can target any ref from the UI. A real (non-dry-run) release must
+      # only ever run on master, so it can't move vX / vX.Y from a feature ref. Fail loudly
+      # (a job-level `if` would silently skip); dry_run is allowed on any ref for testing.
+      - name: Require master for a real release
+        if: ${{ github.ref != 'refs/heads/master' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        run: |
+          echo "::error::A real release may only run on master (ref: ${{ github.ref }}). Re-dispatch with dry_run to exercise another ref."
+          exit 1
+
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Release from CHANGELOG
+        env:
+          DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.email "github-actions@github.com"
+          git config user.name "github-actions"
+          ./tools/changelog-release.sh
