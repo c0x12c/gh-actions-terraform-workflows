@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Auto-release: a new `Release on CHANGELOG` workflow cuts a release when a `## [vX.Y.Z]` section lands on master - `tools/changelog-release.sh` tags the version and moves the `vX.Y` / `vX` aliases, and the existing `Auto Generate Release` publishes it. The release is driven by the top CHANGELOG heading (declared source of truth), is idempotent (a CHANGELOG edit that introduces no new, un-tagged top version is a no-op), skips `## [Unreleased]`, and enforces a strictly-increasing (numeric) version. The `Update {Major,Minor,Patch} Version Tag` dispatchers remain as a manual fallback.
+
+### Fixed
+
+- `Auto Generate Release`: the `## [Unreleased]` guard never actually skipped - the check `exit 0`'d on both branches with `continue-on-error: true`, so the `if: success()` gate always passed. It now sets a step output and the publish step gates on it.
+
 ## [v3.0.1] - 2026-07-25
 
 ### Fixed

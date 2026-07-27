@@ -5,7 +5,7 @@ ACTION=${1:-patch}
 
 git fetch origin --tags
 
-RELEASE_VERSION="$($SEMTAG final -s $ACTION -o)"
+RELEASE_VERSION="$($SEMTAG final -s "$ACTION" -o)"
 
 echo "Next release version: $RELEASE_VERSION"
 
@@ -15,7 +15,7 @@ if test -f "package.json"; then
   git push origin master
 fi
 
-$SEMTAG final -s $ACTION -v "$RELEASE_VERSION"
+$SEMTAG final -s "$ACTION" -v "$RELEASE_VERSION"
 
 STRIPPED_PATCH_VERSION="${RELEASE_VERSION%.*}"
 
