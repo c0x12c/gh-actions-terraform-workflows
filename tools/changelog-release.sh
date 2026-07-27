@@ -61,7 +61,9 @@ if [ "$DRY_RUN" = "true" ]; then
 fi
 
 log "Releasing ${version} at ${head_sha} (latest was ${latest:-none}); moving ${minor} + ${major}."
-git tag "$version"
+# Annotated tag for the release (matches tools/semtag); the vX.Y / vX aliases below stay
+# lightweight force-moves, matching tools/create_release.sh.
+git tag -a "$version" -m "Release ${version}"
 git push "$REMOTE" "$version"
 git tag -f "$minor" "$version"
 git push "$REMOTE" "$minor" --force
