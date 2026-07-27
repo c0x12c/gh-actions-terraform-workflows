@@ -30,6 +30,15 @@ jobs:
     if: github.repository_owner == 'c0x12c'
     runs-on: ubuntu-latest
     steps:
+      # workflow_dispatch can target any ref from the UI. A real (non-dry-run) release must
+      # only ever run on master, so it can't move vX / vX.Y from a feature ref. Fail loudly
+      # (a job-level `if` would silently skip); dry_run is allowed on any ref for testing.
+      - name: Require master for a real release
+        if: ${{ github.ref != 'refs/heads/master' && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        run: |
+          echo "::error::A real release may only run on master (ref: ${{ github.ref }}). Re-dispatch with dry_run to exercise another ref."
+          exit 1
+
       - name: Checkout source
         uses: actions/checkout@v7
         with:
