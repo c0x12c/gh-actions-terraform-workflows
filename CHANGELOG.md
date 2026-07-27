@@ -6,13 +6,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- Auto-release: a new `Release on CHANGELOG` workflow cuts a release when a `## [vX.Y.Z]` section lands on master - `tools/changelog-release.sh` tags the version and moves the `vX.Y` / `vX` aliases, and the existing `Auto Generate Release` publishes it. The release is driven by the top CHANGELOG heading (declared source of truth), is idempotent (a CHANGELOG edit that introduces no new, un-tagged top version is a no-op), skips `## [Unreleased]`, and enforces a strictly-increasing (numeric) version. The `Update {Major,Minor,Patch} Version Tag` dispatchers remain as a manual fallback.
+- Releases are now CHANGELOG-driven and fully automated. Finalizing the top `## [vX.Y.Z]` section on master runs a single `Release` workflow (`tools/changelog-release.sh`) that tags the version, moves the `vX.Y` / `vX` aliases, and publishes the GitHub Release from that section - all in one job under `GITHUB_TOKEN`. It is idempotent (a CHANGELOG edit that introduces no new, un-tagged top version is a no-op), skips `## [Unreleased]`, and enforces a strictly-increasing (numeric) version. `workflow_dispatch` (with a `dry_run` input) is the manual fallback.
 
-### Fixed
+### Removed
 
-- `Auto Generate Release`: the `## [Unreleased]` guard never actually skipped - the check `exit 0`'d on both branches with `continue-on-error: true`, so the `if: success()` gate always passed. It now sets a step output and the publish step gates on it.
+- The manual release machinery superseded by the above: the `Update {Major,Minor,Patch} Version Tag` workflows, `Auto Generate Release` (whose `## [Unreleased]` guard was also dead - it `exit 0`'d on both branches under `continue-on-error`), and `tools/create_release.sh` + `tools/semtag`. The bump level is no longer chosen by hand; the CHANGELOG heading is the single source of truth.
 
 ## [v3.0.1] - 2026-07-25
 
