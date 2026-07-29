@@ -9,6 +9,9 @@
 # Reads: REFRESH, GITHUB_OUTPUT. Writes: error_detail to GITHUB_OUTPUT, /tmp/apply.out.
 set -euo pipefail
 
+# The log is only needed inside this script - the notification carries the extracted error.
+trap 'rm -f /tmp/apply.out' EXIT
+
 # 2000 bytes leaves room under gh-actions-slack-notify's 2500-char cap for the code fence and
 # the surrounding text; if that cap fired it would cut the closing fence and break the block.
 MAX_ERROR_BYTES="${MAX_ERROR_BYTES:-2000}"
@@ -38,6 +41,10 @@ if [ -z "${details}" ]; then
   details=$(tail -c "${MAX_ERROR_BYTES}" /tmp/apply.out)
 fi
 set -e -o pipefail
+
+# A fence terminator in the error would close the Slack code block early and let the rest of the
+# output render as mrkdwn. Consumers of the output see the same neutralized text.
+details=${details//'```'/"'''"}
 
 # Heredoc delimiter must not occur in the body, or the error text could forge output entries.
 delimiter="EOF_apply_error_${RANDOM}${RANDOM}"

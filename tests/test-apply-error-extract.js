@@ -50,9 +50,10 @@ exit ${applyCode}
   const raw = fs.readFileSync(outFile, 'utf8');
   // GITHUB_OUTPUT heredoc: error_detail<<DELIM \n <body> \n DELIM
   const m = raw.match(/^error_detail<<(\S+)\n([\s\S]*)\n\1\n?$/m);
+  const logLeaked = fs.existsSync('/tmp/apply.out');
   fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync('/tmp/apply.out', { force: true });
-  return { rawOutput: raw, detail: m ? m[2] : null, stepFailed };
+  return { rawOutput: raw, detail: m ? m[2] : null, stepFailed, logLeaked };
 }
 
 let passed = 0, failed = 0;
@@ -84,6 +85,20 @@ for (const variant of VARIANTS) {
     const r = runApply(0, 'Apply complete! Resources: 1 added.\n');
     assert.ok(!r.stepFailed, 'clean apply should not fail the step');
     assert.strictEqual(r.detail, null, 'no error_detail on the success path');
+    assert.ok(!r.logLeaked, 'the apply log is cleaned up on the success path');
+  });
+
+  test(label('the apply log is not left behind on the failure path either'), () => {
+    const r = runApply(1, 'Error: nope\n');
+    assert.ok(!r.logLeaked, 'apply output can be sensitive - it must not survive on a self-hosted runner');
+  });
+
+  // A fence terminator in the error would close the Slack code block early and let the rest of
+  // the output render as mrkdwn.
+  test(label('a triple backtick in the error cannot break out of the Slack code fence'), () => {
+    const r = runApply(1, 'Error: bad value ```\nstill inside\n');
+    assert.ok(!r.detail.includes('```'), `fence terminator must be neutralized, got: ${r.detail}`);
+    assert.ok(r.detail.includes('still inside'), 'the rest of the error is kept');
   });
 
   test(label('a failed apply fails the step and extracts from the first Error: block'), () => {
