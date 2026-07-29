@@ -69,15 +69,22 @@ test('gate keys off the step outcome, and comment skips a pre-plan failure', () 
 // The rendered plan carries resource attributes and is not secret-masked, so a fixed path both
 // collides between concurrent jobs on a self-hosted runner and exposes it to other users there.
 test('plan artifacts live in RUNNER_TEMP, 0600, not a shared /tmp', () => {
-  for (const f of ['actions/terraform-plan/scripts/plan.sh',
+  const sources = ['actions/terraform-plan/scripts/plan.sh',
                    'actions/terraform-plan/scripts/post-comment.js',
+                   'scripts/validate.sh',
+                   'scripts/gcp-plan.sh',
                    'actions/terraform-plan/action.yml',
-                   'actions/terraform-plan-gcp/action.yml']) {
+                   'actions/terraform-plan-gcp/action.yml',
+                   'actions/terraform-apply-gcp/action.yml'];
+  for (const f of sources) {
     const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
     assert.doesNotMatch(src, /\/tmp\/(plan|validate)/, `${f} still has a fixed /tmp path`);
     // Unguarded ${RUNNER_TEMP} would write to /validate_output.txt off a runner, where the
     // scripts are otherwise runnable - as the tests themselves rely on.
     assert.doesNotMatch(src, /\$\{RUNNER_TEMP\}/, `${f} uses RUNNER_TEMP without a /tmp fallback`);
+    // TMP is defined inside the scripts; a step referencing it in YAML has nothing to expand and
+    // would write to the filesystem root.
+    if (f.endsWith('.yml')) assert.doesNotMatch(src, /\$\{TMP\}/, `${f} expands TMP outside a script`);
   }
   assert.strictEqual(runPlan(0).planOutMode, '600', 'the rendered plan must not be world-readable');
 });

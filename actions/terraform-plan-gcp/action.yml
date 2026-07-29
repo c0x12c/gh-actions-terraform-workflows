@@ -84,21 +84,17 @@ runs:
     - name: Terraform Validate
       id: validate
       shell: bash
-      run: |
-        umask 077
-        TMP="${RUNNER_TEMP:-/tmp}"
-        terraform validate -no-color > "${TMP}/validate_output.txt"
+      # ../../ - a composite action gets the whole repo, and the script is shared with the sibling.
+      run: bash "${GITHUB_ACTION_PATH}/../../scripts/validate.sh"
       working-directory: ${{ inputs.working_dir }}
 
     - name: Terraform Plan
       id: plan
       shell: bash
-      run: |
-        umask 077
-        TMP="${RUNNER_TEMP:-/tmp}"
-        terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out="${TMP}/plan.tmp"
-        terraform show -no-color "${TMP}/plan.tmp" > "${TMP}/plan.out"
-        rm -f "${TMP}/plan.tmp"
+      env:
+        REFRESH: ${{ inputs.refresh }}
+      # ../../ - a composite action gets the whole repo, and the script is shared with the sibling.
+      run: bash "${GITHUB_ACTION_PATH}/../../scripts/gcp-plan.sh"
       continue-on-error: true
       working-directory: ${{ inputs.working_dir }}
 

@@ -22,16 +22,6 @@ function assertHasRefreshInput(actionPath, expectedDescriptionFragment) {
   assert.match(action, /required: false\n    default: "true"/, `${actionPath} should default refresh to true`);
 }
 
-function assertTerraformCommandUsesRefresh(actionPath, command) {
-  const action = readAction(actionPath);
-
-  assert.match(
-    action,
-    new RegExp(`${command}[^\\n]*-refresh=\\$\\{\\{ inputs\\.refresh \\}\\}`),
-    `${actionPath} should pass inputs.refresh to terraform ${command}`,
-  );
-}
-
 function runTests() {
   console.log('Running refresh configuration tests...\n');
 
@@ -43,8 +33,13 @@ function runTests() {
   const planSh = fs.readFileSync(path.join(ROOT, 'actions', 'terraform-plan', 'scripts', 'plan.sh'), 'utf8');
   assert.match(planSh, /terraform plan[^\n]*-refresh="\$\{REFRESH\}"/, 'plan.sh should pass REFRESH to terraform plan');
 
+  // Both GCP actions run the shared scripts/gcp-plan.sh, same passthrough as above.
+  const gcpPlanSh = fs.readFileSync(path.join(ROOT, 'scripts', 'gcp-plan.sh'), 'utf8');
+  assert.match(gcpPlanSh, /-refresh="\$\{REFRESH\}"/, 'gcp-plan.sh should pass REFRESH to terraform plan');
+
   assertHasRefreshInput('actions/terraform-plan-gcp/action.yml', 'Whether to refresh the state before planning');
-  assertTerraformCommandUsesRefresh('actions/terraform-plan-gcp/action.yml', 'terraform plan');
+  const planGcpAction = readAction('actions/terraform-plan-gcp/action.yml');
+  assert.match(planGcpAction, /REFRESH: \$\{\{ inputs\.refresh \}\}/, 'action.yml should pass inputs.refresh as REFRESH env');
 
   // Both apply actions run the shared scripts/apply.sh: action.yml passes inputs.refresh as the
   // REFRESH env, and the script uses it.
@@ -56,7 +51,6 @@ function runTests() {
   assert.match(applyAction, /REFRESH: \$\{\{ inputs\.refresh \}\}/, 'action.yml should pass inputs.refresh as REFRESH env');
 
   assertHasRefreshInput('actions/terraform-apply-gcp/action.yml', 'Whether to refresh the state before applying');
-  assertTerraformCommandUsesRefresh('actions/terraform-apply-gcp/action.yml', 'terraform plan');
   const applyGcpAction = readAction('actions/terraform-apply-gcp/action.yml');
   assert.match(applyGcpAction, /REFRESH: \$\{\{ inputs\.refresh \}\}/, 'action.yml should pass inputs.refresh as REFRESH env');
 
