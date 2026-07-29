@@ -1,11 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * Tests for the terraform-apply error extraction. Runs the REAL scripts/apply.sh against a fake
- * terraform, so the exit-code capture and the SIGPIPE-prone extraction are exercised, not mirrored.
- *
- * The AWS and GCP actions keep separate copies of the script (they are consumed independently by
- * subpath), so the extraction suite runs against both.
+ * Tests for scripts/apply.sh, the shared terraform-apply runner. Runs the REAL script against a
+ * fake terraform, so the exit-code capture and the SIGPIPE-prone extraction are exercised rather
+ * than mirrored, plus the wiring both actions depend on.
  *
  * Usage: node tests/test-apply-error-extract.js
  */
@@ -17,32 +15,37 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const ROOT = path.join(__dirname, '..');
-const VARIANTS = ['terraform-apply', 'terraform-apply-gcp'].map(a => ({
-  action: a,
-  sh: path.join(ROOT, 'actions', a, 'scripts', 'apply.sh'),
-  yml: path.join(ROOT, 'actions', a, 'action.yml'),
-}));
+const APPLY_SH = path.join(ROOT, 'scripts', 'apply.sh');
+const ACTIONS = ['terraform-apply', 'terraform-apply-gcp'];
 
-let APPLY_SH = VARIANTS[0].sh;
-
-/** Run apply.sh with a fake terraform that exits `applyCode` after printing `output`. */
-function runApply(applyCode, output, maxBytes) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apply-error-'));
+/**
+ * Run apply.sh with a fake terraform that prints `output` and exits `applyCode`.
+ * Returns the published outputs, whether the step failed, and whether the log survived.
+ */
+function runApply(applyCode, output, { maxBytes, planFile } = {}) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apply-'));
+  const runnerTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'runner-temp-'));
   const outFile = path.join(dir, 'gh_output');
   const payload = path.join(dir, 'payload');
+
   fs.writeFileSync(payload, output);
   fs.writeFileSync(path.join(dir, 'terraform'), `#!/usr/bin/env bash
+echo "args: $*" > ${JSON.stringify(path.join(dir, 'args'))}
 cat ${JSON.stringify(payload)} >&2
 exit ${applyCode}
 `);
   fs.chmodSync(path.join(dir, 'terraform'), 0o755);
   fs.writeFileSync(outFile, '');
-  fs.rmSync('/tmp/apply.out', { force: true });
 
-  // RUNNER_TEMP is what GitHub gives each job; the script must honour it rather than a fixed /tmp.
-  const runnerTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'runner-temp-'));
-  const env = { ...process.env, PATH: `${dir}:${process.env.PATH}`, GITHUB_OUTPUT: outFile, REFRESH: 'true', RUNNER_TEMP: runnerTemp };
+  const env = {
+    ...process.env,
+    PATH: `${dir}:${process.env.PATH}`,
+    GITHUB_OUTPUT: outFile,
+    REFRESH: 'true',
+    RUNNER_TEMP: runnerTemp,
+  };
   if (maxBytes) env.MAX_ERROR_BYTES = String(maxBytes);
+  if (planFile) env.PLAN_FILE = planFile;
 
   let stepFailed = false;
   try {
@@ -50,14 +53,22 @@ exit ${applyCode}
   } catch { stepFailed = true; }
 
   const raw = fs.readFileSync(outFile, 'utf8');
-  // GITHUB_OUTPUT heredoc: error_detail<<DELIM \n <body> \n DELIM
-  const m = raw.match(/^error_detail<<(\S+)\n([\s\S]*)\n\1\n?$/m);
-  // Leaked = the script left its log behind, in RUNNER_TEMP or at the old fixed path.
-  const logLeaked = fs.existsSync(path.join(runnerTemp, 'apply.out')) || fs.existsSync('/tmp/apply.out');
+  const read = name => {
+    const m = raw.match(new RegExp(`^${name}<<(\\S+)\\n([\\s\\S]*?)\\n\\1$`, 'm'));
+    return m ? m[2] : null;
+  };
+  const result = {
+    detail: read('error_detail'),
+    slackMessage: read('slack_message'),
+    args: fs.existsSync(path.join(dir, 'args')) ? fs.readFileSync(path.join(dir, 'args'), 'utf8') : '',
+    // The old fixed path is checked too, so a regression back to it still reads as a leak.
+    logLeaked: fs.existsSync(path.join(runnerTemp, 'apply.out')) || fs.existsSync('/tmp/apply.out'),
+    stepFailed,
+  };
+
   fs.rmSync(dir, { recursive: true, force: true });
   fs.rmSync(runnerTemp, { recursive: true, force: true });
-  fs.rmSync('/tmp/apply.out', { force: true });
-  return { rawOutput: raw, detail: m ? m[2] : null, stepFailed, logLeaked };
+  return result;
 }
 
 let passed = 0, failed = 0;
@@ -68,104 +79,107 @@ function test(name, fn) {
 
 console.log('Running apply-error-extract tests...\n');
 
-for (const variant of VARIANTS) {
-  APPLY_SH = variant.sh;
-  const ACTION = variant.yml;
-  const label = s => `[${variant.action}] ${s}`;
+// --- the script -----------------------------------------------------------------------------
 
-  test(label('apply.sh captures terraform own exit code via PIPESTATUS, not the pipeline/tee status'), () => {
-    const sh = fs.readFileSync(APPLY_SH, 'utf8');
-    assert.ok(/apply_code=\$\{PIPESTATUS\[0\]\}/.test(sh), 'must read PIPESTATUS[0] so tee cannot mask the apply code');
+test('a successful apply exits 0, publishes nothing, and leaves no log', () => {
+  const r = runApply(0, 'Apply complete! Resources: 1 added.\n');
+  assert.ok(!r.stepFailed, 'clean apply should not fail the step');
+  assert.strictEqual(r.detail, null, 'no error_detail on the success path');
+  assert.ok(!r.logLeaked, 'the apply log is cleaned up');
+});
+
+test('a failed apply fails the step and extracts from the first Error: block', () => {
+  const r = runApply(1, 'Acquiring state lock...\nError: Error acquiring the state lock\n\nLock Info:\n  ID: abc\n');
+  assert.ok(r.stepFailed, 'a failed apply must fail the step');
+  assert.ok(r.detail.startsWith('Error: Error acquiring the state lock'), `starts at the error block, got: ${r.detail}`);
+  assert.ok(!r.detail.includes('Acquiring state lock...'), 'pre-error noise dropped');
+  assert.ok(r.detail.includes('ID: abc'), 'the rest of the error block is kept');
+  assert.ok(!r.logLeaked, 'apply output can be sensitive - it must not survive the job');
+});
+
+test('slack_message is the error in a code fence', () => {
+  const r = runApply(1, 'Error: quota exceeded\n');
+  assert.strictEqual(r.slackMessage, '```Error: quota exceeded```');
+});
+
+test('a boxed (framed) terraform error is matched too', () => {
+  const r = runApply(1, 'noise\n╷\n│ Error: creating S3 Bucket: AccessDenied\n│\n╵\n');
+  assert.ok(r.detail.includes('AccessDenied'), `boxed error must match, got: ${r.detail}`);
+});
+
+test('ANSI colour codes are stripped so the anchor still matches', () => {
+  const r = runApply(1, 'noise\n[31m[1mError: quota exceeded[0m\n');
+  assert.ok(r.detail.startsWith('Error: quota exceeded'), `ANSI must be stripped, got: ${JSON.stringify(r.detail)}`);
+});
+
+// Regression: head -c closes the pipe early on a long error, and the SIGPIPE it sends upstream
+// used to kill the script under pipefail before it published anything.
+test('an error longer than the cap is truncated, not lost', () => {
+  const r = runApply(1, 'Error: boom\n' + 'x'.repeat(200000) + '\n', { maxBytes: 500 });
+  assert.ok(r.detail !== null, 'output must still be published when head closes the pipe early');
+  assert.ok(r.detail.startsWith('Error: boom'), 'truncated detail still starts at the error');
+  assert.ok(r.detail.length <= 500, `detail capped, got ${r.detail.length}`);
+});
+
+test('a failure with no Error: block falls back to the log tail', () => {
+  const r = runApply(2, 'terraform: command bailed out with no rendered error\n');
+  assert.ok(r.detail && r.detail.includes('bailed out'), `expected a tail fallback, got: ${r.detail}`);
+});
+
+test('a triple backtick in the error cannot break out of the Slack code fence', () => {
+  const r = runApply(1, 'Error: bad value ```\nstill inside\n');
+  assert.ok(!r.detail.includes('```'), `fence terminator must be neutralized, got: ${r.detail}`);
+  assert.ok(r.slackMessage.startsWith('```') && r.slackMessage.endsWith('```'), 'exactly one fence pair');
+  assert.strictEqual(r.slackMessage.split('```').length, 3, 'no stray fence inside the block');
+});
+
+test('an error containing the heredoc delimiter cannot forge an output', () => {
+  const sh = fs.readFileSync(APPLY_SH, 'utf8');
+  assert.match(sh, /grep -v -x -F "\$\{delimiter\}"/, 'delimiter lines must be dropped from the body');
+  assert.match(sh, /RANDOM/, 'the delimiter must not be fixed and guessable');
+});
+
+test('the apply log lives in RUNNER_TEMP, not a fixed /tmp path', () => {
+  const sh = fs.readFileSync(APPLY_SH, 'utf8');
+  assert.match(sh, /RUNNER_TEMP:-\/tmp/, 'must derive the log path from RUNNER_TEMP');
+  assert.doesNotMatch(sh, /\/tmp\/apply\.out/, 'no fixed /tmp/apply.out reference may remain');
+});
+
+test('terraform own exit code is captured, not the pipeline/tee status', () => {
+  const sh = fs.readFileSync(APPLY_SH, 'utf8');
+  assert.match(sh, /code=\$\{PIPESTATUS\[0\]\}/, 'must read PIPESTATUS[0] so tee cannot mask the apply code');
+});
+
+test('PLAN_FILE is applied when set, and omitted when not', () => {
+  assert.match(runApply(0, '', { planFile: '/tmp/plan.tmp' }).args, /\/tmp\/plan\.tmp/, 'gcp applies a saved plan');
+  assert.doesNotMatch(runApply(0, '').args, /plan\.tmp/, 'aws applies without one');
+});
+
+// --- the wiring both actions depend on ------------------------------------------------------
+
+for (const action of ACTIONS) {
+  const yml = fs.readFileSync(path.join(ROOT, 'actions', action, 'action.yml'), 'utf8');
+  const label = s => `[${action}] ${s}`;
+
+  test(label('runs the shared script rather than its own copy'), () => {
+    assert.match(yml, /run: bash "\$\{GITHUB_ACTION_PATH\}\/\.\.\/\.\.\/scripts\/apply\.sh"/, 'must call scripts/apply.sh');
+    assert.ok(!fs.existsSync(path.join(ROOT, 'actions', action, 'scripts', 'apply.sh')), 'no per-action copy may return');
   });
 
-  test(label('action wires the error into the failure notification and exports it'), () => {
-    const a = fs.readFileSync(ACTION, 'utf8');
-    assert.ok(/value:\s*\$\{\{\s*steps\.tf_apply\.outputs\.error_detail\s*\}\}/.test(a), 'error_detail must be an action output');
-    assert.ok(/message:.*steps\.tf_apply\.outputs\.error_detail/.test(a), 'failure notification must pass the error as message');
-    assert.ok(/gh-actions-slack-notify@v0\.2\.0/.test(a), 'message input needs slack-notify >= v0.2.0');
+  test(label('exports the error and puts it in the failure notification'), () => {
+    assert.match(yml, /value: \$\{\{ steps\.tf_apply\.outputs\.error_detail \}\}/, 'error_detail must be an action output');
+    assert.match(yml, /message: \$\{\{ steps\.tf_apply\.outputs\.slack_message \}\}/, 'failure notification carries the error');
+    assert.match(yml, /gh-actions-slack-notify@v0\.2\.0/, 'the message input needs slack-notify >= v0.2.0');
   });
 
-  // The commit list is what says WHAT was being applied. It came from slack-notify's own default
-  // before, so it was invisible here and silently unconfigurable.
+  // The commit list came from slack-notify's own default before, so it was invisible here and
+  // silently unconfigurable.
   test(label('both notifications list the recent commits, from a declared input'), () => {
-    const a = fs.readFileSync(ACTION, 'utf8');
-    assert.match(a, /^ {2}num_commits:\n/m, 'num_commits must be a declared input');
-    assert.match(a, /required: false\n {4}default: "3"/, 'default 3 recent commits');
-    assert.strictEqual(
-      (a.match(/num-commits: \$\{\{ inputs\.num_commits \}\}/g) || []).length, 2,
-      'both the success and failure notifications must pass it',
-    );
+    assert.match(yml, /^ {2}num_commits:\n/m, 'num_commits must be a declared input');
+    assert.match(yml, /required: false\n {4}default: "3"/, 'default 3 recent commits');
+    assert.strictEqual((yml.match(/num-commits: \$\{\{ inputs\.num_commits \}\}/g) || []).length, 2,
+      'both the success and failure notifications must pass it');
   });
-
-  test(label('a successful apply exits 0 and publishes no error detail'), () => {
-    const r = runApply(0, 'Apply complete! Resources: 1 added.\n');
-    assert.ok(!r.stepFailed, 'clean apply should not fail the step');
-    assert.strictEqual(r.detail, null, 'no error_detail on the success path');
-    assert.ok(!r.logLeaked, 'the apply log is cleaned up on the success path');
-  });
-
-  test(label('the apply log is not left behind on the failure path either'), () => {
-    const r = runApply(1, 'Error: nope\n');
-    assert.ok(!r.logLeaked, 'apply output can be sensitive - it must not survive on a self-hosted runner');
-  });
-
-  // A fixed /tmp path would collide between two apply jobs sharing a self-hosted runner, and now
-  // that the log is cleaned up, one job's trap could delete the file the other is reading.
-  test(label('the apply log lives in RUNNER_TEMP, not a fixed /tmp path'), () => {
-    const sh = fs.readFileSync(APPLY_SH, 'utf8');
-    assert.ok(/RUNNER_TEMP:-\/tmp/.test(sh), 'must derive the log path from RUNNER_TEMP');
-    assert.ok(!/\/tmp\/apply\.out/.test(sh), 'no fixed /tmp/apply.out reference may remain');
-  });
-
-  // A fence terminator in the error would close the Slack code block early and let the rest of
-  // the output render as mrkdwn.
-  test(label('a triple backtick in the error cannot break out of the Slack code fence'), () => {
-    const r = runApply(1, 'Error: bad value ```\nstill inside\n');
-    assert.ok(!r.detail.includes('```'), `fence terminator must be neutralized, got: ${r.detail}`);
-    assert.ok(r.detail.includes('still inside'), 'the rest of the error is kept');
-  });
-
-  test(label('a failed apply fails the step and extracts from the first Error: block'), () => {
-    const r = runApply(1, 'Acquiring state lock...\nError: Error acquiring the state lock\n\nLock Info:\n  ID: abc\n');
-    assert.ok(r.stepFailed, 'a failed apply must fail the step');
-    assert.ok(r.detail.startsWith('Error: Error acquiring the state lock'), `detail starts at the error block, got: ${r.detail}`);
-    assert.ok(!r.detail.includes('Acquiring state lock...'), 'pre-error noise dropped');
-    assert.ok(r.detail.includes('ID: abc'), 'the rest of the error block is kept');
-  });
-
-  test(label('a boxed (framed) terraform error is matched too'), () => {
-    const r = runApply(1, 'noise\n╷\n│ Error: creating S3 Bucket: AccessDenied\n│\n╵\n');
-    assert.ok(r.detail.includes('AccessDenied'), `boxed error must match, got: ${r.detail}`);
-  });
-
-  test(label('ANSI colour codes are stripped so the anchor still matches'), () => {
-    const r = runApply(1, 'noise\n\u001b[31m\u001b[1mError: quota exceeded\u001b[0m\n');
-    assert.ok(r.detail.startsWith('Error: quota exceeded'), `ANSI must be stripped, got: ${JSON.stringify(r.detail)}`);
-  });
-
-  // Regression: head -c closes the pipe early on a long error, and the SIGPIPE it sends upstream
-  // used to kill the script under pipefail before it wrote GITHUB_OUTPUT - losing exactly the
-  // errors worth reporting.
-  test(label('an error longer than the cap is truncated, not lost'), () => {
-    const long = 'Error: boom\n' + 'x'.repeat(200000) + '\n';
-    const r = runApply(1, long, 500);
-    assert.ok(r.detail !== null, 'output must still be written when head closes the pipe early');
-    assert.ok(r.detail.startsWith('Error: boom'), 'truncated detail still starts at the error');
-    assert.ok(r.detail.length <= 500, `detail capped, got ${r.detail.length}`);
-    assert.ok(r.stepFailed, 'still fails the step');
-  });
-
-  test(label('a failure with no Error: block falls back to the log tail'), () => {
-    const r = runApply(2, 'terraform: command bailed out with no rendered error\n');
-    assert.ok(r.detail && r.detail.includes('bailed out'), `expected a tail fallback, got: ${r.detail}`);
-  });
-
-  test(label('an error containing the heredoc delimiter cannot forge output entries'), () => {
-    const sh = fs.readFileSync(APPLY_SH, 'utf8');
-    assert.ok(/grep -v -x -F "\$\{delimiter\}"/.test(sh), 'delimiter lines must be filtered out of the body');
-    assert.ok(/RANDOM/.test(sh), 'delimiter must not be a fixed, guessable string');
-  });
-
 }
 
 console.log('\n' + '='.repeat(50));

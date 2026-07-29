@@ -92,15 +92,14 @@ runs:
       run: terraform init
       working-directory: ${{ inputs.working_dir }}
 
-    # apply.sh exits with terraform's own code, so this step's outcome stays the failure signal;
-    # it publishes error_detail before exiting - see actions/terraform-apply/scripts/apply.sh.
     - name: Terraform Apply
       id: tf_apply
       shell: bash
       working-directory: ${{ inputs.working_dir }}
       env:
         REFRESH: ${{ inputs.refresh }}
-      run: bash "${GITHUB_ACTION_PATH}/scripts/apply.sh"
+      # ../../ - a composite action gets the whole repo, and the script is shared with the sibling.
+      run: bash "${GITHUB_ACTION_PATH}/../../scripts/apply.sh"
 
     - name: Send Notification to Slack on success
       uses: c0x12c/gh-actions-slack-notify@v0.2.0
@@ -110,9 +109,7 @@ runs:
         num-commits: ${{ inputs.num_commits }}
         title: '✅ *${{ github.event.repository.name }} - Terraform Apply SUCCESS in ${{ inputs.environment }}*'
 
-    # The error goes in the alert itself so a state lock or a quota denial does not require
-    # opening the run. Fenced as mrkdwn (slack-notify renders `message` raw), and left empty
-    # when the run failed before the apply step, so no empty code block is posted.
+    # message is empty when the run failed before the apply, so no empty code block is posted.
     - name: Send Notification to Slack on failure
       uses: c0x12c/gh-actions-slack-notify@v0.2.0
       if: failure() && inputs.slack_webhook_url != ''
@@ -120,4 +117,4 @@ runs:
         webhook_url: ${{ inputs.slack_webhook_url }}
         num-commits: ${{ inputs.num_commits }}
         title: '❌ *${{ github.event.repository.name }} - Terraform Apply FAILED in ${{ inputs.environment }}*'
-        message: "${{ steps.tf_apply.outputs.error_detail && format('```{0}```', steps.tf_apply.outputs.error_detail) || '' }}"
+        message: ${{ steps.tf_apply.outputs.slack_message }}
