@@ -20,6 +20,15 @@ Here are the inputs the workflow requires:
 | `refresh`                        | Whether to refresh state before planning and applying      | `false`  | `true`  |
 | `github_token`                   | GitHub Token to post comments to PR                        | `false`  | `''`    |
 
+## Outputs
+
+| Output Name    | Description                                                                                                                                                            |
+|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `error_detail` | The terraform error from a failed apply (from the first `Error:` block onward, capped at 2000 bytes). Empty on success. Use it to render your own failure notification. |
+
+The Slack failure notification already carries this error in its body, so an alert names the cause
+(a held state lock, a denied permission) without opening the run.
+
 ## Usage
 
 ```

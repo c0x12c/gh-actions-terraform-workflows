@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
-- `terraform-apply` now puts the underlying terraform error in the Slack failure notification, and exposes it as an `error_detail` output. The apply is de-embedded from `action.yml` into `scripts/apply.sh` (mirroring `terraform-plan`), which captures terraform's own exit code via `PIPESTATUS[0]`, extracts from the first `Error:` block onward - boxed or not, ANSI stripped - and caps it at 2000 bytes, falling back to the log tail when no error block was rendered. Requires `gh-actions-slack-notify@v0.2.0` for its new `message` input; the success notification is unchanged apart from that pin. The apply now also runs with `-no-color`, matching the plan.
+- `terraform-apply` and `terraform-apply-gcp` now put the underlying terraform error in the Slack failure notification, and expose it as an `error_detail` output. The apply is de-embedded from `action.yml` into `scripts/apply.sh` (mirroring `terraform-plan`), which captures terraform's own exit code via `PIPESTATUS[0]`, extracts from the first `Error:` block onward - boxed or not, ANSI stripped - and caps it at 2000 bytes, falling back to the log tail when no error block was rendered. Requires `gh-actions-slack-notify@v0.2.0` for its new `message` input; the success notification is unchanged apart from that pin. The apply now also runs with `-no-color`, matching the plan. The two actions keep separate copies of the script, since each is consumed independently by subpath.
 
 ### Changed
 

@@ -55,7 +55,11 @@ function runTests() {
 
   assertHasRefreshInput('actions/terraform-apply-gcp/action.yml', 'Whether to refresh the state before applying');
   assertTerraformCommandUsesRefresh('actions/terraform-apply-gcp/action.yml', 'terraform plan');
-  assertTerraformCommandUsesRefresh('actions/terraform-apply-gcp/action.yml', 'terraform apply');
+  // The apply itself runs from scripts/apply.sh, same as the two above.
+  const applyGcpAction = readAction('actions/terraform-apply-gcp/action.yml');
+  assert.match(applyGcpAction, /REFRESH: \$\{\{ inputs\.refresh \}\}/, 'action.yml should pass inputs.refresh as REFRESH env');
+  const applyGcpSh = fs.readFileSync(path.join(ROOT, 'actions', 'terraform-apply-gcp', 'scripts', 'apply.sh'), 'utf8');
+  assert.match(applyGcpSh, /terraform apply[^\n]*-refresh="\$\{REFRESH\}"/, 'apply.sh should pass REFRESH to terraform apply');
 
   console.log('All refresh configuration tests passed.');
 }
