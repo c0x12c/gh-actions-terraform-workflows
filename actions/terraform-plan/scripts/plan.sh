@@ -6,7 +6,7 @@
 # outcome is 'failure' and the gate catches it. The plan itself is allowed to exit non-zero
 # without aborting - an error is reported through the comment, not just crashed.
 #
-# Reads: REFRESH, RUNNER_TEMP, GITHUB_OUTPUT. Writes: ${RUNNER_TEMP}/plan.out (kept for the
+# Reads: REFRESH, RUNNER_TEMP, GITHUB_OUTPUT. Writes: <RUNNER_TEMP>/plan.out (kept for the
 # comment step).
 set -euo pipefail
 

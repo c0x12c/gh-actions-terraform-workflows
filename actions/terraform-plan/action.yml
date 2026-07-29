@@ -104,7 +104,8 @@ runs:
       shell: bash
       run: |
         umask 077
-        terraform validate -no-color > "${RUNNER_TEMP}/validate_output.txt"
+        TMP="${RUNNER_TEMP:-/tmp}"
+        terraform validate -no-color > "${TMP}/validate_output.txt"
       working-directory: ${{ inputs.working_dir }}
 
     - name: Terraform Plan

@@ -75,6 +75,9 @@ test('plan artifacts live in RUNNER_TEMP, 0600, not a shared /tmp', () => {
                    'actions/terraform-plan-gcp/action.yml']) {
     const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
     assert.doesNotMatch(src, /\/tmp\/(plan|validate)/, `${f} still has a fixed /tmp path`);
+    // Unguarded ${RUNNER_TEMP} would write to /validate_output.txt off a runner, where the
+    // scripts are otherwise runnable - as the tests themselves rely on.
+    assert.doesNotMatch(src, /\$\{RUNNER_TEMP\}/, `${f} uses RUNNER_TEMP without a /tmp fallback`);
   }
   assert.strictEqual(runPlan(0).planOutMode, '600', 'the rendered plan must not be world-readable');
 });

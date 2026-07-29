@@ -86,7 +86,8 @@ runs:
       shell: bash
       run: |
         umask 077
-        terraform validate -no-color > "${RUNNER_TEMP}/validate_output.txt"
+        TMP="${RUNNER_TEMP:-/tmp}"
+        terraform validate -no-color > "${TMP}/validate_output.txt"
       working-directory: ${{ inputs.working_dir }}
 
     - name: Terraform Plan
@@ -94,9 +95,10 @@ runs:
       shell: bash
       run: |
         umask 077
-        terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out="${RUNNER_TEMP}/plan.tmp"
-        terraform show -no-color "${RUNNER_TEMP}/plan.tmp" > "${RUNNER_TEMP}/plan.out"
-        rm -f "${RUNNER_TEMP}/plan.tmp"
+        TMP="${RUNNER_TEMP:-/tmp}"
+        terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out="${TMP}/plan.tmp"
+        terraform show -no-color "${TMP}/plan.tmp" > "${TMP}/plan.out"
+        rm -f "${TMP}/plan.tmp"
       continue-on-error: true
       working-directory: ${{ inputs.working_dir }}
 
