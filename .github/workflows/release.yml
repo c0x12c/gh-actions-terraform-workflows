@@ -4,7 +4,10 @@ name: Release
 # master cuts the tag, moves the vX.Y / vX aliases (consumers pin @vN), and publishes the
 # release from that section. While the top heading is "## [Unreleased]" this is a no-op.
 # tools/changelog-release.sh is idempotent + monotonic; workflow_dispatch (dry_run) is the
-# manual fallback. Single job under GITHUB_TOKEN - no App token, no tag-triggered publish.
+# manual fallback. Single job, no tag-triggered publish.
+#
+# Authenticates as the GitHub App because the "Tags protection" ruleset restricts tag creation and
+# github-actions[bot] is not a bypass actor - a GITHUB_TOKEN run is rejected with GH013.
 on:
   push:
     branches: [ master ]
@@ -21,8 +24,10 @@ concurrency:
   group: release
   cancel-in-progress: false
 
+# Both the tag push and the release go through the App token.
 permissions:
-  contents: write
+  contents: read
+  id-token: write
 
 jobs:
   release:
@@ -39,15 +44,24 @@ jobs:
           echo "::error::A real release may only run on master (ref: ${{ github.ref }}). Re-dispatch with dry_run to exercise another ref."
           exit 1
 
+      - name: Create GitHub App Token
+        uses: actions/create-github-app-token@v3
+        id: github-app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+
+      # Persisting the token is what makes the tag push authenticate as the App, not just `gh`.
       - name: Checkout source
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          token: ${{ steps.github-app-token.outputs.token }}
 
       - name: Release from CHANGELOG
         env:
           DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || 'false' }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ steps.github-app-token.outputs.token }}
         run: |
           git config user.email "github-actions@github.com"
           git config user.name "github-actions"
