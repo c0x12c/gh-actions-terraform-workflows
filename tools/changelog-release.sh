@@ -9,8 +9,10 @@
 #   CHANGELOG_FILE  changelog path (default CHANGELOG.md)
 #   DRY_RUN         "true" logs the verdict + notes and changes nothing (default "false")
 #   REMOTE          git remote (default origin)
-#   GH_TOKEN        token for `gh release create` (non-dry-run). Must be able to create tags -
-#                   see the ruleset note in .github/workflows/release.yml.
+#   GH_TOKEN        token for `gh release create` (non-dry-run)
+#
+# The tags are pushed by git, so it is the REMOTE's credentials - not GH_TOKEN - that must be
+# allowed to create them; see the ruleset note in .github/workflows/release.yml.
 # Exit: 0 = released or intentional no-op; 1 = malformed / non-increasing / empty body.
 set -euo pipefail
 

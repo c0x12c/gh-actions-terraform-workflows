@@ -27,7 +27,6 @@ concurrency:
 # Both the tag push and the release go through the App token.
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   release:
