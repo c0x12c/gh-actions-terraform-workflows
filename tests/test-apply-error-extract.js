@@ -39,7 +39,9 @@ exit ${applyCode}
   fs.writeFileSync(outFile, '');
   fs.rmSync('/tmp/apply.out', { force: true });
 
-  const env = { ...process.env, PATH: `${dir}:${process.env.PATH}`, GITHUB_OUTPUT: outFile, REFRESH: 'true' };
+  // RUNNER_TEMP is what GitHub gives each job; the script must honour it rather than a fixed /tmp.
+  const runnerTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'runner-temp-'));
+  const env = { ...process.env, PATH: `${dir}:${process.env.PATH}`, GITHUB_OUTPUT: outFile, REFRESH: 'true', RUNNER_TEMP: runnerTemp };
   if (maxBytes) env.MAX_ERROR_BYTES = String(maxBytes);
 
   let stepFailed = false;
@@ -50,8 +52,10 @@ exit ${applyCode}
   const raw = fs.readFileSync(outFile, 'utf8');
   // GITHUB_OUTPUT heredoc: error_detail<<DELIM \n <body> \n DELIM
   const m = raw.match(/^error_detail<<(\S+)\n([\s\S]*)\n\1\n?$/m);
-  const logLeaked = fs.existsSync('/tmp/apply.out');
+  // Leaked = the script left its log behind, in RUNNER_TEMP or at the old fixed path.
+  const logLeaked = fs.existsSync(path.join(runnerTemp, 'apply.out')) || fs.existsSync('/tmp/apply.out');
   fs.rmSync(dir, { recursive: true, force: true });
+  fs.rmSync(runnerTemp, { recursive: true, force: true });
   fs.rmSync('/tmp/apply.out', { force: true });
   return { rawOutput: raw, detail: m ? m[2] : null, stepFailed, logLeaked };
 }
@@ -91,6 +95,14 @@ for (const variant of VARIANTS) {
   test(label('the apply log is not left behind on the failure path either'), () => {
     const r = runApply(1, 'Error: nope\n');
     assert.ok(!r.logLeaked, 'apply output can be sensitive - it must not survive on a self-hosted runner');
+  });
+
+  // A fixed /tmp path would collide between two apply jobs sharing a self-hosted runner, and now
+  // that the log is cleaned up, one job's trap could delete the file the other is reading.
+  test(label('the apply log lives in RUNNER_TEMP, not a fixed /tmp path'), () => {
+    const sh = fs.readFileSync(APPLY_SH, 'utf8');
+    assert.ok(/RUNNER_TEMP:-\/tmp/.test(sh), 'must derive the log path from RUNNER_TEMP');
+    assert.ok(!/\/tmp\/apply\.out/.test(sh), 'no fixed /tmp/apply.out reference may remain');
   });
 
   // A fence terminator in the error would close the Slack code block early and let the rest of
