@@ -22,6 +22,11 @@ run_apply() {
   local args=(-input=false -auto-approve -no-color -refresh="${REFRESH}")
   [ -n "${PLAN_FILE:-}" ] && args+=("${PLAN_FILE}")
 
+  # tee would create the log world-readable. The apply output is not secret-masked and can carry
+  # provider request bodies, so it is created 0600 in a subshell umask - restricting it after the
+  # fact would leave a window open on a shared runner.
+  (umask 077 && : > "${APPLY_LOG}")
+
   # PIPESTATUS[0] is terraform's own code; under pipefail the pipeline's could be tee's.
   set +e
   terraform apply "${args[@]}" 2>&1 | tee "${APPLY_LOG}"

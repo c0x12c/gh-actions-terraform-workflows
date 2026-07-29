@@ -29,8 +29,11 @@ function runApply(applyCode, output, { maxBytes, planFile } = {}) {
   const payload = path.join(dir, 'payload');
 
   fs.writeFileSync(payload, output);
+  // The log is created before terraform runs and removed after, so its mode is captured from here.
   fs.writeFileSync(path.join(dir, 'terraform'), `#!/usr/bin/env bash
 echo "args: $*" > ${JSON.stringify(path.join(dir, 'args'))}
+{ stat -c '%a' "\${RUNNER_TEMP}/apply.out" || stat -f '%Lp' "\${RUNNER_TEMP}/apply.out"; } \
+  > ${JSON.stringify(path.join(dir, 'logmode'))} 2>/dev/null
 cat ${JSON.stringify(payload)} >&2
 exit ${applyCode}
 `);
@@ -52,6 +55,8 @@ exit ${applyCode}
     execFileSync('bash', [APPLY_SH], { cwd: dir, env, stdio: 'pipe' });
   } catch { stepFailed = true; }
 
+  const modeFile = path.join(dir, 'logmode');
+  const logMode = fs.existsSync(modeFile) ? fs.readFileSync(modeFile, 'utf8').trim() : null;
   const raw = fs.readFileSync(outFile, 'utf8');
   const read = name => {
     const m = raw.match(new RegExp(`^${name}<<(\\S+)\\n([\\s\\S]*?)\\n\\1$`, 'm'));
@@ -63,6 +68,7 @@ exit ${applyCode}
     args: fs.existsSync(path.join(dir, 'args')) ? fs.readFileSync(path.join(dir, 'args'), 'utf8') : '',
     // The old fixed path is checked too, so a regression back to it still reads as a leak.
     logLeaked: fs.existsSync(path.join(runnerTemp, 'apply.out')) || fs.existsSync('/tmp/apply.out'),
+    logMode,
     stepFailed,
   };
 
@@ -139,6 +145,12 @@ test('truncation never emits invalid UTF-8', () => {
   const r = runApply(1, 'Error: xxxxxxxx\u{1F525} tail\n', { maxBytes: 17 });
   assert.strictEqual(r.detail, 'Error: xxxxxxxx', 'the incomplete character is dropped, not half-emitted');
   assert.ok(Buffer.from(r.detail, 'utf8').toString('utf8') === r.detail, 'must round-trip as UTF-8');
+});
+
+// The apply output is not secret-masked, so on a shared runner it must not be world-readable for
+// the lifetime of the apply.
+test('the apply log is created 0600, before terraform writes to it', () => {
+  assert.strictEqual(runApply(0, 'Apply complete!\n').logMode, '600');
 });
 
 test('shell metacharacters in the error are data, never expanded', () => {
