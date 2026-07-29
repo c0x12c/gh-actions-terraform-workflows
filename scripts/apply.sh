@@ -4,10 +4,10 @@
 # so a fix cannot land in one and miss the other, and testable outside action.yml like plan.sh.
 #
 # Reads:  REFRESH, PLAN_FILE (optional), RUNNER_TEMP, GITHUB_OUTPUT
-# Writes: error_detail (raw), slack_message (fenced) - both empty when the apply succeeds
+# Writes: error_detail - the terraform error, empty when the apply succeeds
 set -euo pipefail
 
-# Under gh-actions-slack-notify's 2500-char cap, which would otherwise truncate the closing fence.
+# Under gh-actions-slack-notify's 2500-char cap, so the notification renders the error whole.
 MAX_ERROR_BYTES="${MAX_ERROR_BYTES:-2000}"
 
 # Per-job, not a fixed /tmp path: two applies on one self-hosted runner would share the log, and
@@ -53,8 +53,7 @@ extract_error() {
   [ -n "${detail}" ] || detail=$(tail -c "${MAX_ERROR_BYTES}" "${APPLY_LOG}" | iconv -c -f utf-8 -t utf-8)
   set -e -o pipefail
 
-  # A fence terminator would close the Slack code block early and let the rest render as mrkdwn.
-  printf '%s' "${detail//'```'/"'''"}"
+  printf '%s' "${detail}"
 }
 
 # Random delimiter, and any line matching it dropped, so error text cannot forge an output.
@@ -72,9 +71,6 @@ apply_code=0
 run_apply || apply_code=$?
 [ "${apply_code}" -eq 0 ] && exit 0
 
-error=$(extract_error)
-publish_output error_detail "${error}"
-# An empty fence would post an empty code block, so send nothing instead.
-[ -n "${error}" ] && publish_output slack_message '```'"${error}"'```'
+publish_output error_detail "$(extract_error)"
 
 exit "${apply_code}"
