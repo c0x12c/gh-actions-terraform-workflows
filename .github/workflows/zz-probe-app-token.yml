@@ -1,0 +1,49 @@
+name: Probe App Token Tag Push
+
+# TEMPORARY - delete before merge. Proves the App token can create a tag under the "Tags
+# protection" ruleset, which is the step the release failed on and the only step a dry run skips.
+# Uses a throwaway tag rather than a version: changelog-release.sh force-moves v3.1 / v3, so a real
+# release run from a branch would point consumers' @v3 at branch code.
+# push-triggered because workflow_dispatch only lists workflows present on the default branch.
+on:
+  push:
+    branches: [ ducdt/release-app-token ]
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub App Token
+        uses: actions/create-github-app-token@v3
+        id: github-app-token
+        with:
+          app-id: ${{ vars.APP_ID }}
+          private-key: ${{ secrets.GH_APP_PRIVATE_KEY }}
+
+      - name: Checkout source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ steps.github-app-token.outputs.token }}
+
+      - name: Create, push and delete a throwaway tag
+        run: |
+          set -euo pipefail
+          git config user.email "github-actions@github.com"
+          git config user.name "github-actions"
+
+          tag="probe-app-token-${GITHUB_RUN_ID}"
+          git tag -a "$tag" -m "Probe: can the App token create a tag under the ruleset?"
+
+          echo "::group::push"
+          git push origin "$tag"
+          echo "::endgroup::"
+          echo "CREATE: ok - the ruleset accepted a tag creation from the App token."
+
+          echo "::group::delete"
+          git push origin ":refs/tags/${tag}"
+          echo "::endgroup::"
+          echo "DELETE: ok - no tag left behind."
