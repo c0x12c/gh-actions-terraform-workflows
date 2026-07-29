@@ -6,21 +6,29 @@
 # outcome is 'failure' and the gate catches it. The plan itself is allowed to exit non-zero
 # without aborting - an error is reported through the comment, not just crashed.
 #
-# Reads: REFRESH, GITHUB_OUTPUT. Writes: /tmp/plan.out (kept for the comment step).
+# Reads: REFRESH, RUNNER_TEMP, GITHUB_OUTPUT. Writes: <RUNNER_TEMP>/plan.out (kept for the
+# comment step).
 set -euo pipefail
 
-trap 'rm -f /tmp/plan.tmp /tmp/plan.raw /tmp/plan.err' EXIT
+# Per-job dir, not a fixed /tmp path: two plans on one self-hosted runner would otherwise share
+# these files, and the trap below would delete them out from under the other.
+TMP="${RUNNER_TEMP:-/tmp}"
+# The rendered plan carries resource attributes and is not secret-masked, so nothing here should
+# be readable by other users on a shared runner.
+umask 077
+
+trap 'rm -f "${TMP}/plan.tmp" "${TMP}/plan.raw" "${TMP}/plan.err"' EXIT
 
 # Capture terraform's OWN exit code via PIPESTATUS[0] - not the pipeline status, which under
 # pipefail could be tee's. set +e so a plan error doesn't abort before we read it.
 set +e
-terraform plan -input=false -no-color -lock=false -refresh="${REFRESH}" -out=/tmp/plan.tmp 2>&1 | tee /tmp/plan.raw
+terraform plan -input=false -no-color -lock=false -refresh="${REFRESH}" -out="${TMP}/plan.tmp" 2>&1 | tee "${TMP}/plan.raw"
 plan_code=${PIPESTATUS[0]}
 set -e
 echo "plan_exitcode=${plan_code}" >> "${GITHUB_OUTPUT}"
 
 if [ "${plan_code}" -ne 0 ]; then
-  cp /tmp/plan.raw /tmp/plan.out
+  cp "${TMP}/plan.raw" "${TMP}/plan.out"
   exit "${plan_code}"
 fi
 
@@ -28,8 +36,8 @@ fi
 # warnings polluting the comment); only if show fails do we append its stderr, so the error
 # still surfaces in the comment, then exit non-zero -> outcome=failure -> the gate fires.
 show_code=0
-terraform show -no-color /tmp/plan.tmp > /tmp/plan.out 2>/tmp/plan.err || show_code=$?
+terraform show -no-color "${TMP}/plan.tmp" > "${TMP}/plan.out" 2>"${TMP}/plan.err" || show_code=$?
 if [ "${show_code}" -ne 0 ]; then
-  cat /tmp/plan.err >> /tmp/plan.out
+  cat "${TMP}/plan.err" >> "${TMP}/plan.out"
   exit "${show_code}"
 fi

@@ -84,17 +84,17 @@ runs:
     - name: Terraform Validate
       id: validate
       shell: bash
-      run: |
-        terraform validate -no-color > /tmp/validate_output.txt
+      # ../../ - a composite action gets the whole repo, and the script is shared with the sibling.
+      run: bash "${GITHUB_ACTION_PATH}/../../scripts/validate.sh"
       working-directory: ${{ inputs.working_dir }}
 
     - name: Terraform Plan
       id: plan
       shell: bash
-      run: |
-        terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out=/tmp/plan.tmp
-        terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
-        rm -f /tmp/plan.tmp
+      env:
+        REFRESH: ${{ inputs.refresh }}
+      # ../../ - a composite action gets the whole repo, and the script is shared with the sibling.
+      run: bash "${GITHUB_ACTION_PATH}/../../scripts/gcp-plan.sh"
       continue-on-error: true
       working-directory: ${{ inputs.working_dir }}
 
@@ -112,12 +112,13 @@ runs:
         github-token: ${{ inputs.github_token }}
         script: |
           const fs = require('fs')
+          const tmp = process.env.RUNNER_TEMP || '/tmp'
 
-          const validationOutput = fs.readFileSync('/tmp/validate_output.txt', 'utf8').replace(/`/g, '\\`')
-          fs.unlinkSync('/tmp/validate_output.txt')
+          const validationOutput = fs.readFileSync(`${tmp}/validate_output.txt`, 'utf8').replace(/`/g, '\\`')
+          fs.unlinkSync(`${tmp}/validate_output.txt`)
 
-          const plan = fs.readFileSync('/tmp/plan.out', 'utf8').replace(/`/g, '\\`')
-          fs.unlinkSync('/tmp/plan.out')
+          const plan = fs.readFileSync(`${tmp}/plan.out`, 'utf8').replace(/`/g, '\\`')
+          fs.unlinkSync(`${tmp}/plan.out`)
 
           const environment = '${{ inputs.environment }}'.toUpperCase()
           const output = `#### Environment: ${environment}

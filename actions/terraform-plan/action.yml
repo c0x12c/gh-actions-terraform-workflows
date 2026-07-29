@@ -102,8 +102,8 @@ runs:
     - name: Terraform Validate
       id: validate
       shell: bash
-      run: |
-        terraform validate -no-color > /tmp/validate_output.txt
+      # ../../ - a composite action gets the whole repo, and the script is shared with the sibling.
+      run: bash "${GITHUB_ACTION_PATH}/../../scripts/validate.sh"
       working-directory: ${{ inputs.working_dir }}
 
     - name: Terraform Plan

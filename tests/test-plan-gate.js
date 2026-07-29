@@ -20,9 +20,11 @@ const ACTION = path.join(ROOT, 'actions', 'terraform-plan', 'action.yml');
 /** Run plan.sh with a fake terraform whose plan/show exit with the given codes. */
 function runPlan(planCode, showCode = 0) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-gate-'));
+  const runnerTemp = fs.mkdtempSync(path.join(os.tmpdir(), 'runner-temp-'));
+  const tmpFile = f => path.join(runnerTemp, f);
   fs.writeFileSync(path.join(dir, 'terraform'), `#!/usr/bin/env bash
 case "$1" in
-  plan) [ "${planCode}" -eq 0 ] && { echo "Plan: 1 to add"; : > /tmp/plan.tmp; } || echo "Error: broke" >&2; exit ${planCode} ;;
+  plan) [ "${planCode}" -eq 0 ] && { echo "Plan: 1 to add"; : > "$RUNNER_TEMP/plan.tmp"; } || echo "Error: broke" >&2; exit ${planCode} ;;
   show) [ "${showCode}" -eq 0 ] && echo "rendered plan" || { echo "show failed" >&2; exit ${showCode}; }; exit 0 ;;
 esac
 exit 0
@@ -30,23 +32,24 @@ exit 0
   fs.chmodSync(path.join(dir, 'terraform'), 0o755);
   const outFile = path.join(dir, 'gh_output');
   fs.writeFileSync(outFile, '');
-  for (const f of ['/tmp/plan.tmp', '/tmp/plan.raw', '/tmp/plan.out']) fs.rmSync(f, { force: true });
-
   let stepFailed = false;
   try {
     execFileSync('bash', [PLAN_SH], {
       cwd: dir,
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, GITHUB_OUTPUT: outFile, REFRESH: 'true' },
+      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, GITHUB_OUTPUT: outFile, REFRESH: 'true', RUNNER_TEMP: runnerTemp },
       stdio: 'pipe',
     });
   } catch { stepFailed = true; }
 
   const m = fs.readFileSync(outFile, 'utf8').match(/plan_exitcode=(\d+)/);
-  const planOut = fs.existsSync('/tmp/plan.out') ? fs.readFileSync('/tmp/plan.out', 'utf8') : null;
-  const tmpLeaked = fs.existsSync('/tmp/plan.tmp') || fs.existsSync('/tmp/plan.raw');
+  const planOut = fs.existsSync(tmpFile('plan.out')) ? fs.readFileSync(tmpFile('plan.out'), 'utf8') : null;
+  // The old fixed paths are checked too, so a regression back to them still reads as a leak.
+  const tmpLeaked = ['plan.tmp', 'plan.raw'].some(f => fs.existsSync(tmpFile(f)) || fs.existsSync(`/tmp/${f}`));
+  const planOutMode = fs.existsSync(tmpFile('plan.out'))
+    ? (fs.statSync(tmpFile('plan.out')).mode & 0o777).toString(8) : null;
   fs.rmSync(dir, { recursive: true, force: true });
-  for (const f of ['/tmp/plan.tmp', '/tmp/plan.raw', '/tmp/plan.out']) fs.rmSync(f, { force: true });
-  return { plan_exitcode: m ? m[1] : null, planOut, stepFailed, tmpLeaked };
+  fs.rmSync(runnerTemp, { recursive: true, force: true });
+  return { plan_exitcode: m ? m[1] : null, planOut, stepFailed, tmpLeaked, planOutMode };
 }
 
 let passed = 0, failed = 0;
@@ -61,6 +64,29 @@ test('gate keys off the step outcome, and comment skips a pre-plan failure', () 
   const a = fs.readFileSync(ACTION, 'utf8');
   assert.ok(/if:\s*steps\.plan\.outcome\s*==\s*'failure'/.test(a), 'gate must be steps.plan.outcome == failure');
   assert.ok(/steps\.plan\.outcome\s*!=\s*'skipped'/.test(a), 'comment step must skip a pre-plan failure');
+});
+
+// The rendered plan carries resource attributes and is not secret-masked, so a fixed path both
+// collides between concurrent jobs on a self-hosted runner and exposes it to other users there.
+test('plan artifacts live in RUNNER_TEMP, 0600, not a shared /tmp', () => {
+  const sources = ['actions/terraform-plan/scripts/plan.sh',
+                   'actions/terraform-plan/scripts/post-comment.js',
+                   'scripts/validate.sh',
+                   'scripts/gcp-plan.sh',
+                   'actions/terraform-plan/action.yml',
+                   'actions/terraform-plan-gcp/action.yml',
+                   'actions/terraform-apply-gcp/action.yml'];
+  for (const f of sources) {
+    const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    assert.doesNotMatch(src, /\/tmp\/(plan|validate)/, `${f} still has a fixed /tmp path`);
+    // Unguarded ${RUNNER_TEMP} would write to /validate_output.txt off a runner, where the
+    // scripts are otherwise runnable - as the tests themselves rely on.
+    assert.doesNotMatch(src, /\$\{RUNNER_TEMP\}/, `${f} uses RUNNER_TEMP without a /tmp fallback`);
+    // TMP is defined inside the scripts; a step referencing it in YAML has nothing to expand and
+    // would write to the filesystem root.
+    if (f.endsWith('.yml')) assert.doesNotMatch(src, /\$\{TMP\}/, `${f} expands TMP outside a script`);
+  }
+  assert.strictEqual(runPlan(0).planOutMode, '600', 'the rendered plan must not be world-readable');
 });
 
 test('plan.sh captures terraform own exit code via PIPESTATUS, not the pipeline/tee status', () => {

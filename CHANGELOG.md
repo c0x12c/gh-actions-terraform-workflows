@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v3.1.1] - 2026-07-29
+
+### Fixed
+
+- `terraform-plan` and `terraform-plan-gcp` keep their artifacts (`plan.tmp`, `plan.raw`, `plan.out`, `plan.err`, `validate_output.txt`) in `RUNNER_TEMP` at mode 0600 rather than at fixed `/tmp` paths. On a self-hosted runner two plans on one machine shared those paths - and since the scripts clean up after themselves, one job's trap could delete the file another was still reading. The rendered plan carries resource attributes and is not secret-masked, so it should not have been readable by other users on the machine either. The apply actions were fixed this way in v3.1.0; this finishes the job.
+
+### Changed
+
+- The validate step and the GCP plan step move out of `action.yml` into `scripts/validate.sh` and `scripts/gcp-plan.sh`, each shared by the two actions that ran identical copies of them. Same reasoning as `scripts/apply.sh` in v3.1.0: shellcheck'd, unit-tested, and a fix cannot land in one copy and miss the other. `terraform-plan-gcp` no longer deletes its own `plan.tmp` - the runner clears `RUNNER_TEMP` at the end of the job, so the explicit delete bought nothing once the file moved off `/tmp`.
+
 ## [v3.1.0] - 2026-07-29
 
 ### Added
