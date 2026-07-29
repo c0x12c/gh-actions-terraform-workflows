@@ -13,7 +13,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Changed
 
-- Releases are now CHANGELOG-driven and fully automated. Finalizing the top `## [vX.Y.Z]` section on master runs a single `Release` workflow (`tools/changelog-release.sh`) that tags the version, moves the `vX.Y` / `vX` aliases, and publishes the GitHub Release from that section - all in one job under `GITHUB_TOKEN`. It is idempotent (a CHANGELOG edit that introduces no new, un-tagged top version is a no-op), skips `## [Unreleased]`, and enforces a strictly-increasing (numeric) version. `workflow_dispatch` (with a `dry_run` input) is the manual fallback.
+- Releases are now CHANGELOG-driven and fully automated. Finalizing the top `## [vX.Y.Z]` section on master runs a single `Release` workflow (`tools/changelog-release.sh`) that tags the version, moves the `vX.Y` / `vX` aliases, and publishes the GitHub Release from that section - all in one job. It is idempotent (a CHANGELOG edit that introduces no new, un-tagged top version is a no-op), skips `## [Unreleased]`, and enforces a strictly-increasing (numeric) version. `workflow_dispatch` (with a `dry_run` input) is the manual fallback.
+
+### Fixed
+
+- The `Release` workflow authenticates as the GitHub App (`vars.APP_ID`) instead of `GITHUB_TOKEN`. The "Tags protection" ruleset restricts tag creation and requires linear history on every ref, and `github-actions[bot]` is not one of its bypass actors, so the first real run of the CHANGELOG-driven flow was rejected with `GH013` before it could push a tag. The App is a bypass actor - it is what cut every tag before this flow existed. Its earlier "successful" runs had all taken the `## [Unreleased]` no-op path, so the push had never actually been exercised.
 
 ### Removed
 

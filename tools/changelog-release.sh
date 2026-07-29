@@ -2,14 +2,17 @@
 # CHANGELOG-driven release. When the top "## [vX.Y.Z]" section is finalized on master,
 # tag the version, move the vX.Y / vX aliases (consumers pin @vN), and publish a GitHub
 # Release whose body is that section. Idempotent (a CHANGELOG edit that introduces no new,
-# un-tagged top version is a no-op) and monotonic. Single-job: it publishes in place under
-# GITHUB_TOKEN, so there is no tag-triggered second workflow (and no App-token dance).
+# un-tagged top version is a no-op) and monotonic. Single-job: it publishes in place, so there
+# is no tag-triggered second workflow.
 #
 # Env:
 #   CHANGELOG_FILE  changelog path (default CHANGELOG.md)
 #   DRY_RUN         "true" logs the verdict + notes and changes nothing (default "false")
 #   REMOTE          git remote (default origin)
 #   GH_TOKEN        token for `gh release create` (non-dry-run)
+#
+# The tags are pushed by git, so it is the REMOTE's credentials - not GH_TOKEN - that must be
+# allowed to create them; see the ruleset note in .github/workflows/release.yml.
 # Exit: 0 = released or intentional no-op; 1 = malformed / non-increasing / empty body.
 set -euo pipefail
 
