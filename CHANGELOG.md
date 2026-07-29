@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v3.1.1] - 2026-07-29
+
+### Fixed
+
+- `terraform-plan` and `terraform-plan-gcp` keep their artifacts (`plan.tmp`, `plan.raw`, `plan.out`, `plan.err`, `validate_output.txt`) in `RUNNER_TEMP` at mode 0600 rather than at fixed `/tmp` paths. On a self-hosted runner two plans on one machine shared those paths - and since the scripts clean up after themselves, one job's trap could delete the file another was still reading. The rendered plan carries resource attributes and is not secret-masked, so it should not have been readable by other users on the machine either. The apply actions were fixed this way in v3.1.0; this finishes the job.
+
 ## [v3.1.0] - 2026-07-29
 
 ### Added

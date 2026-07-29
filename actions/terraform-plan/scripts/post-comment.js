@@ -32,9 +32,10 @@ module.exports = async ({ github, context }) => {
     return v;
   };
   const esc = (s) => s.replace(/`/g, '\\`');
-  const validationOutput = esc(consume('/tmp/validate_output.txt'));
+  const tmp = process.env.RUNNER_TEMP || '/tmp';
+  const validationOutput = esc(consume(`${tmp}/validate_output.txt`));
   // May be absent if an earlier step failed before the plan ran; post a notice rather than crash.
-  const planRaw = consume('/tmp/plan.out');
+  const planRaw = consume(`${tmp}/plan.out`);
   const plan = planRaw ? esc(planRaw) : 'Plan did not run - an earlier step failed. See the workflow logs.';
 
   // Values that render inside inline-code spans; an embedded backtick would break the span.
