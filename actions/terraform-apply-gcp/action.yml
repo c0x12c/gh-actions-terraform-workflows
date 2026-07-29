@@ -105,8 +105,8 @@ runs:
       id: plan
       shell: bash
       run: |
-        terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out=/tmp/plan.tmp
-        terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
+        terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out="${RUNNER_TEMP}/plan.tmp"
+        terraform show -no-color "${RUNNER_TEMP}/plan.tmp" > "${RUNNER_TEMP}/plan.out"
       continue-on-error: true
       working-directory: ${{ inputs.working_dir }}
 
@@ -116,7 +116,7 @@ runs:
       working-directory: ${{ inputs.working_dir }}
       env:
         REFRESH: ${{ inputs.refresh }}
-        PLAN_FILE: /tmp/plan.tmp
+        PLAN_FILE: ${{ runner.temp }}/plan.tmp
       # ../../ - a composite action gets the whole repo, and the script is shared with the sibling.
       run: bash "${GITHUB_ACTION_PATH}/../../scripts/apply.sh"
 
@@ -145,9 +145,10 @@ runs:
         github-token: ${{ inputs.github_token }}
         script: |
           const fs = require('fs')
+          const planPath = `${process.env.RUNNER_TEMP}/plan.out`
 
-          let plan = fs.readFileSync('/tmp/plan.out', 'utf8').replace(/`/g, '\\`')
-          fs.unlinkSync('/tmp/plan.out')
+          let plan = fs.readFileSync(planPath, 'utf8').replace(/`/g, '\\`')
+          fs.unlinkSync(planPath)
 
           const environment = '${{ inputs.environment }}'.toUpperCase()
 

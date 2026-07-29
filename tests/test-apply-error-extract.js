@@ -186,6 +186,11 @@ for (const action of ACTIONS) {
   const yml = fs.readFileSync(path.join(ROOT, 'actions', action, 'action.yml'), 'utf8');
   const label = s => `[${action}] ${s}`;
 
+  // The saved plan carries resource attributes, so it gets the same per-job treatment as the log.
+  test(label('keeps its terraform artifacts out of a shared /tmp'), () => {
+    assert.doesNotMatch(yml, /\/tmp\/plan\./, 'no fixed /tmp plan path may remain');
+  });
+
   test(label('runs the shared script rather than its own copy'), () => {
     assert.match(yml, /run: bash "\$\{GITHUB_ACTION_PATH\}\/\.\.\/\.\.\/scripts\/apply\.sh"/, 'must call scripts/apply.sh');
     assert.ok(!fs.existsSync(path.join(ROOT, 'actions', action, 'scripts', 'apply.sh')), 'no per-action copy may return');
