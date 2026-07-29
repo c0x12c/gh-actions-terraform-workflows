@@ -27,6 +27,12 @@ Here are the inputs the workflow requires:
 The Slack failure notification already carries this error in its body, so an alert names the cause
 (a held state lock, a denied permission) without opening the run.
 
+The error is captured from the CLI's own output, which means GitHub's secret masking does not apply
+to it - the job log renders registered secrets as `***`, this text does not. Terraform redacts
+values it knows are sensitive, so the residual case is a provider error quoting a request body.
+Point `slack_webhook_url` at a channel you would be comfortable seeing that in, and treat
+`error_detail` the same way if you render it yourself.
+
 ## Usage
 
 ```
