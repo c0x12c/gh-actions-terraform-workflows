@@ -17,6 +17,44 @@ Here are the inputs the workflow requires:
 | `terraform_version` | Terraform version to use                                   | `false`  | `1.8.4` |
 | `working_dir`       | The working directory for Terraform files                  | `true`   |         |
 | `refresh`           | Whether to refresh state before applying                   | `false`  | `true`  |
+| `num_commits`       | Recent commits listed in the Slack notification            | `false`  | `3`     |
+
+## Outputs
+
+| Output Name    | Description                                                                                                                                                                  |
+|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `error_detail` | The terraform error from a failed apply (from the first `Error:` block onward, capped at 2000 bytes). Empty on success. Use it to render your own failure notification. |
+
+The Slack failure notification already carries this error in its body, so an alert names the cause
+(a held state lock, a denied permission) without opening the run.
+
+The error is captured from the CLI's own output, which means GitHub's secret masking does not apply
+to it - the job log renders registered secrets as `***`, this text does not. Terraform redacts
+values it knows are sensitive, so the residual case is a provider error quoting a request body.
+Point `slack_webhook_url` at a channel you would be comfortable seeing that in, and treat
+`error_detail` the same way if you render it yourself.
+
+`error_detail` is terraform's text, so treat it as data. Pass it through `env:` rather than
+interpolating it into a `run:` block, where a resource name containing `$(...)` or backticks would
+be executed by the shell:
+
+```yaml
+- if: failure()
+  env:
+    DETAIL: ${{ steps.tf.outputs.error_detail }}   # not "${{ ... }}" inside the run body
+  run: printf '%s' "$DETAIL" | your-notifier
+```
+
+The notification lists the `num_commits` most recent commits, so an alert says what was being
+applied. That list comes from the checked-out repo, so the caller's checkout has to be at least
+that deep - `actions/checkout` defaults to `fetch-depth: 1`, which leaves only the head commit to
+list:
+
+```yaml
+- uses: actions/checkout@v7
+  with:
+    fetch-depth: 3
+```
 
 ## Usage
 

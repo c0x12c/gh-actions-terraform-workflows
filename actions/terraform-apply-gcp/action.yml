@@ -41,6 +41,21 @@ inputs:
     description: "GitHub Token required to post comments to PR"
     required: false
     default: ""
+  num_commits:
+    description: >-
+      How many recent commits the Slack notification lists, so an alert says what was being
+      applied. The caller's checkout must be at least this deep (actions/checkout defaults to
+      fetch-depth 1, which leaves only the head commit to list).
+    required: false
+    default: "3"
+
+outputs:
+  error_detail:
+    description: >-
+      The terraform error from a failed apply (from the first "Error:" block onward, capped at
+      2000 bytes), so a caller can render its own failure notification without scraping the job
+      log. Empty when the apply succeeded.
+    value: ${{ steps.tf_apply.outputs.error_detail }}
 
 runs:
   using: "composite"
@@ -90,30 +105,38 @@ runs:
       id: plan
       shell: bash
       run: |
-        terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out=/tmp/plan.tmp
-        terraform show -no-color /tmp/plan.tmp > /tmp/plan.out
+        terraform plan -input=false -no-color -lock=false -refresh=${{ inputs.refresh }} -out="${RUNNER_TEMP}/plan.tmp"
+        terraform show -no-color "${RUNNER_TEMP}/plan.tmp" > "${RUNNER_TEMP}/plan.out"
       continue-on-error: true
       working-directory: ${{ inputs.working_dir }}
 
     - name: Terraform Apply
       id: tf_apply
       shell: bash
-      run: terraform apply -input=false -auto-approve -refresh=${{ inputs.refresh }} /tmp/plan.tmp
       working-directory: ${{ inputs.working_dir }}
+      env:
+        REFRESH: ${{ inputs.refresh }}
+        PLAN_FILE: ${{ runner.temp }}/plan.tmp
+      # ../../ - a composite action gets the whole repo, and the script is shared with the sibling.
+      run: bash "${GITHUB_ACTION_PATH}/../../scripts/apply.sh"
 
     - name: Send Notification to Slack on success
-      uses: c0x12c/gh-actions-slack-notify@v0.1.3
+      uses: c0x12c/gh-actions-slack-notify@v0.2.0
       if: success() && inputs.slack_webhook_url != ''
       with:
         webhook_url: ${{ inputs.slack_webhook_url }}
+        num-commits: ${{ inputs.num_commits }}
         title: '✅ *${{ github.event.repository.name }} - Terraform Apply SUCCESS in ${{ inputs.environment }}*'
 
+    # message is empty when the run failed before the apply, so no empty code block is posted.
     - name: Send Notification to Slack on failure
-      uses: c0x12c/gh-actions-slack-notify@v0.1.3
+      uses: c0x12c/gh-actions-slack-notify@v0.2.0
       if: failure() && inputs.slack_webhook_url != ''
       with:
         webhook_url: ${{ inputs.slack_webhook_url }}
+        num-commits: ${{ inputs.num_commits }}
         title: '❌ *${{ github.event.repository.name }} - Terraform Apply FAILED in ${{ inputs.environment }}*'
+        message: ${{ steps.tf_apply.outputs.slack_message }}
 
     - name: Post Terraform Apply Results to PR
       uses: actions/github-script@v7
@@ -122,9 +145,10 @@ runs:
         github-token: ${{ inputs.github_token }}
         script: |
           const fs = require('fs')
+          const planPath = `${process.env.RUNNER_TEMP}/plan.out`
 
-          let plan = fs.readFileSync('/tmp/plan.out', 'utf8').replace(/`/g, '\\`')
-          fs.unlinkSync('/tmp/plan.out')
+          let plan = fs.readFileSync(planPath, 'utf8').replace(/`/g, '\\`')
+          fs.unlinkSync(planPath)
 
           const environment = '${{ inputs.environment }}'.toUpperCase()
 
