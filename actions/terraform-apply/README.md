@@ -18,6 +18,15 @@ Here are the inputs the workflow requires:
 | `working_dir`       | The working directory for Terraform files                  | `true`   |         |
 | `refresh`           | Whether to refresh state before applying                   | `false`  | `true`  |
 
+## Outputs
+
+| Output Name    | Description                                                                                                                                                                  |
+|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `error_detail` | The terraform error from a failed apply (from the first `Error:` block onward, capped at 2000 bytes). Empty on success. Use it to render your own failure notification. |
+
+The Slack failure notification already carries this error in its body, so an alert names the cause
+(a held state lock, a denied permission) without opening the run.
+
 ## Usage
 
 ```

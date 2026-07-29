@@ -26,4 +26,5 @@ jobs:
           node tests/test-refresh-configuration.js
           node tests/test-sticky-comment.js
           node tests/test-plan-gate.js
+          node tests/test-apply-error-extract.js
           node tests/test-changelog-release.js

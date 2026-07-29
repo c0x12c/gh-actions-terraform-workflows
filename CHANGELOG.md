@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `terraform-apply` now puts the underlying terraform error in the Slack failure notification, and exposes it as an `error_detail` output. The apply is de-embedded from `action.yml` into `scripts/apply.sh` (mirroring `terraform-plan`), which captures terraform's own exit code via `PIPESTATUS[0]`, extracts from the first `Error:` block onward - boxed or not, ANSI stripped - and caps it at 2000 bytes, falling back to the log tail when no error block was rendered. Requires `gh-actions-slack-notify@v0.2.0` for its new `message` input; the success notification is unchanged apart from that pin. The apply now also runs with `-no-color`, matching the plan.
+
 ### Changed
 
 - Releases are now CHANGELOG-driven and fully automated. Finalizing the top `## [vX.Y.Z]` section on master runs a single `Release` workflow (`tools/changelog-release.sh`) that tags the version, moves the `vX.Y` / `vX` aliases, and publishes the GitHub Release from that section - all in one job under `GITHUB_TOKEN`. It is idempotent (a CHANGELOG edit that introduces no new, un-tagged top version is a no-op), skips `## [Unreleased]`, and enforces a strictly-increasing (numeric) version. `workflow_dispatch` (with a `dry_run` input) is the manual fallback.
