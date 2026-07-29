@@ -64,7 +64,6 @@ exit ${applyCode}
   };
   const result = {
     detail: read('error_detail'),
-    slackMessage: read('slack_message'),
     args: fs.existsSync(path.join(dir, 'args')) ? fs.readFileSync(path.join(dir, 'args'), 'utf8') : '',
     // The old fixed path is checked too, so a regression back to it still reads as a leak.
     logLeaked: fs.existsSync(path.join(runnerTemp, 'apply.out')) || fs.existsSync('/tmp/apply.out'),
@@ -103,11 +102,6 @@ test('a failed apply fails the step and extracts from the first Error: block', (
   assert.ok(!r.logLeaked, 'apply output can be sensitive - it must not survive the job');
 });
 
-test('slack_message is the error in a code fence', () => {
-  const r = runApply(1, 'Error: quota exceeded\n');
-  assert.strictEqual(r.slackMessage, '```Error: quota exceeded```');
-});
-
 test('a boxed (framed) terraform error is matched too', () => {
   const r = runApply(1, 'noise\n╷\n│ Error: creating S3 Bucket: AccessDenied\n│\n╵\n');
   assert.ok(r.detail.includes('AccessDenied'), `boxed error must match, got: ${r.detail}`);
@@ -132,11 +126,12 @@ test('a failure with no Error: block falls back to the log tail', () => {
   assert.ok(r.detail && r.detail.includes('bailed out'), `expected a tail fallback, got: ${r.detail}`);
 });
 
-test('a triple backtick in the error cannot break out of the Slack code fence', () => {
+// Fencing and its escaping belong to gh-actions-slack-notify's message_format: code, so the error
+// must reach it exactly as terraform wrote it.
+test('a fence terminator in the error is passed through, not rewritten here', () => {
   const r = runApply(1, 'Error: bad value ```\nstill inside\n');
-  assert.ok(!r.detail.includes('```'), `fence terminator must be neutralized, got: ${r.detail}`);
-  assert.ok(r.slackMessage.startsWith('```') && r.slackMessage.endsWith('```'), 'exactly one fence pair');
-  assert.strictEqual(r.slackMessage.split('```').length, 3, 'no stray fence inside the block');
+  assert.ok(r.detail.includes('```'), `the renderer escapes it, this script must not, got: ${r.detail}`);
+  assert.ok(r.detail.includes('still inside'), 'the rest of the error is kept');
 });
 
 // The cap is in bytes, so it can land inside a multi-byte character - terraform's own frame is
@@ -165,9 +160,9 @@ test('printf format specifiers in the error are not interpreted', () => {
   assert.ok(r.detail.includes('%s expected %d'), `format specifiers stay literal, got: ${r.detail}`);
 });
 
-test('a failure with nothing to report publishes no empty code block', () => {
+test('a failure with nothing to report publishes an empty detail, not a stray marker', () => {
   const r = runApply(3, '');
-  assert.strictEqual(r.slackMessage, null, 'an empty fence would post an empty code block');
+  assert.strictEqual(r.detail, '', 'an empty message renders no Slack section at all');
 });
 
 test('an error containing the heredoc delimiter cannot forge an output', () => {
@@ -210,8 +205,9 @@ for (const action of ACTIONS) {
 
   test(label('exports the error and puts it in the failure notification'), () => {
     assert.match(yml, /value: \$\{\{ steps\.tf_apply\.outputs\.error_detail \}\}/, 'error_detail must be an action output');
-    assert.match(yml, /message: \$\{\{ steps\.tf_apply\.outputs\.slack_message \}\}/, 'failure notification carries the error');
-    assert.match(yml, /gh-actions-slack-notify@v0\.2\.0/, 'the message input needs slack-notify >= v0.2.0');
+    assert.match(yml, /message: \$\{\{ steps\.tf_apply\.outputs\.error_detail \}\}/, 'failure notification carries the error');
+    assert.match(yml, /message_format: 'code'/, 'the renderer owns the fence and its escaping');
+    assert.match(yml, /gh-actions-slack-notify@v0\.3\.0/, 'message_format needs slack-notify >= v0.3.0');
   });
 
   // The commit list came from slack-notify's own default before, so it was invisible here and

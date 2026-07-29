@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v3.1.2] - 2026-07-30
+
+### Changed
+
+- The apply-failure notification asks `gh-actions-slack-notify` to render the error as a code block (`message_format: 'code'`, new in its v0.3.0) instead of fencing it here. `scripts/apply.sh` no longer rewrites fence terminators in the error or publishes a second, pre-fenced `slack_message` output - it publishes only `error_detail`, exactly as terraform wrote it. A Slack rendering rule does not belong in a terraform script, and escaping there mutated the value consumers of the output read. The alert renders the same; a consumer already reading `error_detail` now gets the unmodified error.
+
 ## [v3.1.1] - 2026-07-29
 
 ### Fixed

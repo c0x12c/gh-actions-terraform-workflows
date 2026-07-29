@@ -122,22 +122,24 @@ runs:
       run: bash "${GITHUB_ACTION_PATH}/../../scripts/apply.sh"
 
     - name: Send Notification to Slack on success
-      uses: c0x12c/gh-actions-slack-notify@v0.2.0
+      uses: c0x12c/gh-actions-slack-notify@v0.3.0
       if: success() && inputs.slack_webhook_url != ''
       with:
         webhook_url: ${{ inputs.slack_webhook_url }}
         num-commits: ${{ inputs.num_commits }}
         title: '✅ *${{ github.event.repository.name }} - Terraform Apply SUCCESS in ${{ inputs.environment }}*'
 
-    # message is empty when the run failed before the apply, so no empty code block is posted.
     - name: Send Notification to Slack on failure
-      uses: c0x12c/gh-actions-slack-notify@v0.2.0
+      uses: c0x12c/gh-actions-slack-notify@v0.3.0
       if: failure() && inputs.slack_webhook_url != ''
       with:
         webhook_url: ${{ inputs.slack_webhook_url }}
         num-commits: ${{ inputs.num_commits }}
         title: '❌ *${{ github.event.repository.name }} - Terraform Apply FAILED in ${{ inputs.environment }}*'
-        message: ${{ steps.tf_apply.outputs.slack_message }}
+        # The action fences it and escapes any fence terminator in the error - empty when the
+        # run failed before the apply, which renders no section at all.
+        message: ${{ steps.tf_apply.outputs.error_detail }}
+        message_format: 'code'
 
     - name: Post Terraform Apply Results to PR
       uses: actions/github-script@v7
