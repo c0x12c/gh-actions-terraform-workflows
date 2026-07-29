@@ -34,6 +34,17 @@ values it knows are sensitive, so the residual case is a provider error quoting 
 Point `slack_webhook_url` at a channel you would be comfortable seeing that in, and treat
 `error_detail` the same way if you render it yourself.
 
+`error_detail` is terraform's text, so treat it as data. Pass it through `env:` rather than
+interpolating it into a `run:` block, where a resource name containing `$(...)` or backticks would
+be executed by the shell:
+
+```yaml
+- if: failure()
+  env:
+    DETAIL: ${{ steps.tf.outputs.error_detail }}   # not "${{ ... }}" inside the run body
+  run: printf '%s' "$DETAIL" | your-notifier
+```
+
 The notification lists the `num_commits` most recent commits, so an alert says what was being
 applied. That list comes from the checked-out repo, so the caller's checkout has to be at least
 that deep - `actions/checkout` defaults to `fetch-depth: 1`, which leaves only the head commit to

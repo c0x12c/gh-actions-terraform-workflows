@@ -133,6 +133,31 @@ test('a triple backtick in the error cannot break out of the Slack code fence', 
   assert.strictEqual(r.slackMessage.split('```').length, 3, 'no stray fence inside the block');
 });
 
+// The cap is in bytes, so it can land inside a multi-byte character - terraform's own frame is
+// three bytes wide, and the payload below is cut mid-emoji.
+test('truncation never emits invalid UTF-8', () => {
+  const r = runApply(1, 'Error: xxxxxxxx\u{1F525} tail\n', { maxBytes: 17 });
+  assert.strictEqual(r.detail, 'Error: xxxxxxxx', 'the incomplete character is dropped, not half-emitted');
+  assert.ok(Buffer.from(r.detail, 'utf8').toString('utf8') === r.detail, 'must round-trip as UTF-8');
+});
+
+test('shell metacharacters in the error are data, never expanded', () => {
+  const r = runApply(1, 'Error: bad name "$(id)" and `whoami` and ${HOME}\n');
+  assert.ok(r.detail.includes('$(id)'), 'command substitution stays literal');
+  assert.ok(r.detail.includes('`whoami`'), 'backticks stay literal');
+  assert.ok(r.detail.includes('${HOME}'), 'parameter expansion stays literal');
+});
+
+test('printf format specifiers in the error are not interpreted', () => {
+  const r = runApply(1, 'Error: got %s expected %d (100%%)\n');
+  assert.ok(r.detail.includes('%s expected %d'), `format specifiers stay literal, got: ${r.detail}`);
+});
+
+test('a failure with nothing to report publishes no empty code block', () => {
+  const r = runApply(3, '');
+  assert.strictEqual(r.slackMessage, null, 'an empty fence would post an empty code block');
+});
+
 test('an error containing the heredoc delimiter cannot forge an output', () => {
   const sh = fs.readFileSync(APPLY_SH, 'utf8');
   assert.match(sh, /grep -v -x -F "\$\{delimiter\}"/, 'delimiter lines must be dropped from the body');

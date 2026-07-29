@@ -38,11 +38,14 @@ extract_error() {
   # kill the script before it publishes anything.
   set +e +o pipefail
   # ANSI is stripped despite -no-color because a caller can force colour via TF_CLI_ARGS_apply.
+  # The cap is in bytes, so it can land inside a multi-byte character - terraform's own box-drawing
+  # frame is three bytes wide. iconv -c drops the incomplete tail rather than emitting invalid UTF-8.
   detail=$(sed -E "s/${escape}\[[0-9;]*[a-zA-Z]//g" "${APPLY_LOG}" \
     | awk "${ERROR_ONWARD}" \
-    | head -c "${MAX_ERROR_BYTES}")
+    | head -c "${MAX_ERROR_BYTES}" \
+    | iconv -c -f utf-8 -t utf-8)
   # The CLI died before rendering an error block; the tail beats saying nothing.
-  [ -n "${detail}" ] || detail=$(tail -c "${MAX_ERROR_BYTES}" "${APPLY_LOG}")
+  [ -n "${detail}" ] || detail=$(tail -c "${MAX_ERROR_BYTES}" "${APPLY_LOG}" | iconv -c -f utf-8 -t utf-8)
   set -e -o pipefail
 
   # A fence terminator would close the Slack code block early and let the rest render as mrkdwn.
@@ -66,6 +69,7 @@ run_apply || apply_code=$?
 
 error=$(extract_error)
 publish_output error_detail "${error}"
-publish_output slack_message '```'"${error}"'```'
+# An empty fence would post an empty code block, so send nothing instead.
+[ -n "${error}" ] && publish_output slack_message '```'"${error}"'```'
 
 exit "${apply_code}"
