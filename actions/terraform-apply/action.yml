@@ -34,6 +34,13 @@ inputs:
     description: "Whether to refresh the state before applying (true/false)"
     required: false
     default: "true"
+  num_commits:
+    description: >-
+      How many recent commits the Slack notification lists, so an alert says what was being
+      applied. The caller's checkout must be at least this deep (actions/checkout defaults to
+      fetch-depth 1, which leaves only the head commit to list).
+    required: false
+    default: "3"
 
 outputs:
   error_detail:
@@ -100,6 +107,7 @@ runs:
       if: success() && inputs.slack_webhook_url != ''
       with:
         webhook_url: ${{ inputs.slack_webhook_url }}
+        num-commits: ${{ inputs.num_commits }}
         title: '✅ *${{ github.event.repository.name }} - Terraform Apply SUCCESS in ${{ inputs.environment }}*'
 
     # The error goes in the alert itself so a state lock or a quota denial does not require
@@ -110,5 +118,6 @@ runs:
       if: failure() && inputs.slack_webhook_url != ''
       with:
         webhook_url: ${{ inputs.slack_webhook_url }}
+        num-commits: ${{ inputs.num_commits }}
         title: '❌ *${{ github.event.repository.name }} - Terraform Apply FAILED in ${{ inputs.environment }}*'
         message: "${{ steps.tf_apply.outputs.error_detail && format('```{0}```', steps.tf_apply.outputs.error_detail) || '' }}"

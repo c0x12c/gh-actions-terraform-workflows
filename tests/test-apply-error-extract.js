@@ -85,6 +85,18 @@ for (const variant of VARIANTS) {
     assert.ok(/gh-actions-slack-notify@v0\.2\.0/.test(a), 'message input needs slack-notify >= v0.2.0');
   });
 
+  // The commit list is what says WHAT was being applied. It came from slack-notify's own default
+  // before, so it was invisible here and silently unconfigurable.
+  test(label('both notifications list the recent commits, from a declared input'), () => {
+    const a = fs.readFileSync(ACTION, 'utf8');
+    assert.match(a, /^ {2}num_commits:\n/m, 'num_commits must be a declared input');
+    assert.match(a, /required: false\n {4}default: "3"/, 'default 3 recent commits');
+    assert.strictEqual(
+      (a.match(/num-commits: \$\{\{ inputs\.num_commits \}\}/g) || []).length, 2,
+      'both the success and failure notifications must pass it',
+    );
+  });
+
   test(label('a successful apply exits 0 and publishes no error detail'), () => {
     const r = runApply(0, 'Apply complete! Resources: 1 added.\n');
     assert.ok(!r.stepFailed, 'clean apply should not fail the step');

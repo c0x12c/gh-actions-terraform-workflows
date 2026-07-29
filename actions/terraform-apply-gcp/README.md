@@ -19,6 +19,7 @@ Here are the inputs the workflow requires:
 | `working_dir`                    | The working directory for Terraform files                  | `true`   |         |
 | `refresh`                        | Whether to refresh state before planning and applying      | `false`  | `true`  |
 | `github_token`                   | GitHub Token to post comments to PR                        | `false`  | `''`    |
+| `num_commits`                    | Recent commits listed in the Slack notification            | `false`  | `3`     |
 
 ## Outputs
 
@@ -34,6 +35,17 @@ to it - the job log renders registered secrets as `***`, this text does not. Ter
 values it knows are sensitive, so the residual case is a provider error quoting a request body.
 Point `slack_webhook_url` at a channel you would be comfortable seeing that in, and treat
 `error_detail` the same way if you render it yourself.
+
+The notification lists the `num_commits` most recent commits, so an alert says what was being
+applied. That list comes from the checked-out repo, so the caller's checkout has to be at least
+that deep - `actions/checkout` defaults to `fetch-depth: 1`, which leaves only the head commit to
+list:
+
+```yaml
+- uses: actions/checkout@v7
+  with:
+    fetch-depth: 3
+```
 
 ## Usage
 
