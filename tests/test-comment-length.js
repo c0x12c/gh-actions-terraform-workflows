@@ -58,11 +58,13 @@ function buildPlanComment(environment, validationOutput, plan, steps, context) {
     const availableForPlan = MAX_COMMENT_LENGTH - baseLength;
     // Notice length depends on the number it reports, so size it with a placeholder first,
     // then render it with the real count.
-    const notice = (n) => `\n\n... [Plan truncated - showing first ${n} characters only. See workflow logs for full output.] ...`;
-    const maxPlanLength = availableForPlan - notice(availableForPlan).length;
+    const notice = (n) => `\n\n... [Plan truncated - showing the last ${n} characters. See workflow logs for full output.] ...`;
+    const SEPARATOR = '\n\n';
+    const maxPlanLength = availableForPlan - notice(availableForPlan).length - SEPARATOR.length;
 
     if (maxPlanLength > 0) {
-      const truncatedPlan = escapedPlan.substring(0, maxPlanLength) + notice(maxPlanLength);
+      // Keep the END: "Plan: N to add, ..." is the last line and the one a reviewer needs.
+      const truncatedPlan = notice(maxPlanLength) + SEPARATOR + escapedPlan.slice(-maxPlanLength);
       output = `${baseHeader}${truncatedPlan}${baseFooter}`;
     } else {
       output = `${markerPrefix}#### Environment: ${environment}
@@ -321,6 +323,29 @@ function runTests() {
       'Marker must be accounted for in the budget, not appended on top of a full-size comment',
     );
     console.log(`   Sticky: ${sticky.length} chars, plain: ${plain.length} chars (limit: ${MAX_COMMENT_LENGTH})`);
+    console.log('✓ PASSED\n');
+    passed++;
+  } catch (error) {
+    console.log(`✗ FAILED: ${error.message}\n`);
+    failed++;
+  }
+
+  // Test 9: Truncation keeps the END of the plan, where the summary line is
+  try {
+    console.log('Test 9: Truncation keeps the plan summary line');
+    const summary = 'Plan: 12 to add, 3 to change, 1 to destroy.';
+    const plan = `${'# leading resource noise\n'.repeat(4000)}\n${summary}`;
+
+    const output = buildPlanComment('DEV', 'Validation successful', plan, mockSteps, mockContext);
+
+    assert.strictEqual(output.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${output.length}`);
+    assert.strictEqual(output.includes(summary), true, 'Truncated comment must retain the plan summary line');
+    assert.strictEqual(
+      output.includes('showing the last'),
+      true,
+      'Notice should say which end survived',
+    );
+    console.log(`   Comment length: ${output.length} chars, summary retained`);
     console.log('✓ PASSED\n');
     passed++;
   } catch (error) {

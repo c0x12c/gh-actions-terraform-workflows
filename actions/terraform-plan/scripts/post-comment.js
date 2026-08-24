@@ -65,10 +65,14 @@ ${validationOutput}
   if (baseLength + plan.length > MAX_COMMENT_LENGTH) {
     const available = MAX_COMMENT_LENGTH - baseLength;
     // Size the notice against a placeholder first: its length depends on the number it reports.
-    const notice = (n) => `\n\n... [Plan truncated - showing first ${n} characters only. See workflow logs for full output.] ...`;
-    const maxPlan = available - notice(available).length;
+    const notice = (n) => `\n\n... [Plan truncated - showing the last ${n} characters. See workflow logs for full output.] ...`;
+    const SEPARATOR = '\n\n';
+    const maxPlan = available - notice(available).length - SEPARATOR.length;
+    // Keep the END of the plan. "Plan: N to add, M to change, K to destroy" is the last line,
+    // and it is the one line a reviewer needs. Keeping the head drops it on exactly the large
+    // plans where the count matters most, leaving a truncated resource dump and no summary.
     output = maxPlan > 0
-      ? `${header}${plan.substring(0, maxPlan)}${notice(maxPlan)}${footer}`
+      ? `${header}${notice(maxPlan)}${SEPARATOR}${plan.slice(-maxPlan)}${footer}`
       : `${sticky ? marker + '\n' : ''}#### Environment: ${environment}\n\n#### Terraform Plan 📖\`${env.PLAN_PLAN_OUTCOME}\`\n\nPlan output is too large to display. Please check the workflow logs for the full plan.\n\n${meta}`;
   } else {
     output = `${header}${plan}${footer}`;
