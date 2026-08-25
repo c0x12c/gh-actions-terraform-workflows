@@ -42,7 +42,11 @@ module.exports = async ({ github, context }) => {
   const inline = (v) => String(v ?? '').replace(/`/g, '\\`');
   const meta = `*Pusher: @${env.PLAN_ACTOR}, Action: \`${inline(env.PLAN_EVENT_NAME)}\`, Working Directory: \`${inline(workingDir)}\`, Workflow: \`${inline(env.PLAN_WORKFLOW)}\`*`;
   const footer = `\n\`\`\`\n\n</details>\n\n${meta}`;
-  const header = `${sticky ? marker + '\n' : ''}#### Environment: ${environment}
+  // The one line a reviewer acts on. Pinned above the <details> whenever the plan is truncated,
+  // so the decision signal never depends on how much of the plan happened to fit.
+  const summaryMatch = plan.match(/^(?:Plan: .*|No changes\..*)$/m);
+  const summaryBlock = summaryMatch ? `**\`${summaryMatch[0]}\`**\n\n` : '';
+  const header = (pinned = '') => `${sticky ? marker + '\n' : ''}#### Environment: ${environment}
 #### Terraform Initialization ⚙️\`${env.PLAN_INIT_OUTCOME}\`
 #### Terraform Validation 🤖\`${env.PLAN_VALIDATE_OUTCOME}\`
 <details><summary>Validation Output</summary>
@@ -55,15 +59,15 @@ ${validationOutput}
 
 #### Terraform Plan 📖\`${env.PLAN_PLAN_OUTCOME}\`
 
-<details><summary>Show Plan</summary>
+${pinned}<details><summary>Show Plan</summary>
 
 \`\`\`\n
 `;
 
-  const baseLength = header.length + footer.length;
   let output;
-  if (baseLength + plan.length > MAX_COMMENT_LENGTH) {
-    const available = MAX_COMMENT_LENGTH - baseLength;
+  if (header().length + footer.length + plan.length > MAX_COMMENT_LENGTH) {
+    // Budget against the header that will actually be emitted - the pinned summary is part of it.
+    const available = MAX_COMMENT_LENGTH - (header(summaryBlock).length + footer.length);
     // Size the notice against a placeholder first: its length depends on the number it reports.
     const notice = (n) => `\n\n... [Plan truncated - showing the last ${n} characters. See workflow logs for full output.] ...`;
     const SEPARATOR = '\n\n';
@@ -72,10 +76,10 @@ ${validationOutput}
     // and it is the one line a reviewer needs. Keeping the head drops it on exactly the large
     // plans where the count matters most, leaving a truncated resource dump and no summary.
     output = maxPlan > 0
-      ? `${header}${notice(maxPlan)}${SEPARATOR}${plan.slice(-maxPlan)}${footer}`
-      : `${sticky ? marker + '\n' : ''}#### Environment: ${environment}\n\n#### Terraform Plan 📖\`${env.PLAN_PLAN_OUTCOME}\`\n\nPlan output is too large to display. Please check the workflow logs for the full plan.\n\n${meta}`;
+      ? `${header(summaryBlock)}${notice(maxPlan)}${SEPARATOR}${plan.slice(-maxPlan)}${footer}`
+      : `${sticky ? marker + '\n' : ''}#### Environment: ${environment}\n\n#### Terraform Plan 📖\`${env.PLAN_PLAN_OUTCOME}\`\n\n${summaryBlock}Plan output is too large to display. Please check the workflow logs for the full plan.\n\n${meta}`;
   } else {
-    output = `${header}${plan}${footer}`;
+    output = `${header()}${plan}${footer}`;
   }
 
   // Resolve the PR: a valid pr_number wins; otherwise the event's PR. Fail loudly rather than

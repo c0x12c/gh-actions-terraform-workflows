@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v3.1.3] - 2026-08-25
+
+### Fixed
+
+- A truncated plan comment kept the first N characters, so `Plan: N to add, M to change, K to destroy` - the last line terraform writes, and the one line an approver acts on - was dropped on exactly the large plans where the counts matter. Truncation now keeps the tail, with the notice moved above the retained region, and the summary line is additionally pinned above the `Show Plan` fold on every truncated path (including the "too large to display" fallback, which previously showed no plan detail at all). The decision signal no longer depends on how much of the plan happened to fit. The separator between the notice and the plan is counted against the 65536 budget; without that a truncated body could exceed the cap by two characters.
+
+### Changed
+
+- `tests/test-sticky-comment.js` covers truncation against the REAL `post-comment.js`, asserting the summary survives both pinned and inside the retained tail - reverting the module to head-truncation now turns the suite red. The equivalent assertion previously lived only in `tests/test-comment-length.js`, which reimplements the comment builder, so a change to the shipped script could pass the whole suite untouched. That harness also now writes its fixtures to a per-run `RUNNER_TEMP` instead of fixed `/tmp` paths, matching what the action reads since v3.1.1 - on fixed paths it exercised only the fallback branch, and two suites on one machine deleted each other's fixtures.
+
 ## [v3.1.2] - 2026-07-30
 
 ### Changed
