@@ -43,7 +43,7 @@ inputs:
     default: ""
   comment_mode:
     description: >-
-      How to post the plan comment. "sticky" keeps one comment per plan and updates it
+      How to post the apply comment. "sticky" keeps one comment per apply and updates it
       in place, so repeated pushes do not bury the PR under a comment per environment
       per run. Set "new" (default) to append a fresh comment on every run instead.
     required: false
@@ -52,8 +52,9 @@ inputs:
     description: >-
       Hidden HTML marker identifying the sticky comment to update. Only used when
       comment_mode is "sticky". Left empty it derives
-      "<!-- terraform-plan:<environment>:<working_dir> -->", which keeps concurrent plans on
-      the same PR in separate comments; set it explicitly to group them differently. It
+      "<!-- terraform-apply:<environment>:<working_dir> -->", which keeps concurrent applies
+      on the same PR in separate comments - and keeps an apply comment from overwriting the
+      plan comment for the same environment. Set it explicitly to group them differently. It
       cannot be defaulted literally here because the inputs context is unavailable when
       GitHub evaluates input defaults.
     required: false
@@ -61,7 +62,7 @@ inputs:
   pr_number:
     description: >-
       PR number to comment on. Defaults to the PR from the triggering event; set it
-      explicitly so a workflow_dispatch-driven plan can still post a comment.
+      explicitly so a workflow_dispatch-driven apply can still post a comment.
     required: false
     default: ""
   num_commits:
