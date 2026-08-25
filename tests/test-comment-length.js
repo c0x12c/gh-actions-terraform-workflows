@@ -1,167 +1,43 @@
 #!/usr/bin/env node
 
 /**
- * Unit test for GitHub comment length validation
- * Tests the truncation logic for Terraform plan/apply comments
- * 
- * Usage: node tools/test-comment-length.js
+ * Unit test for GitHub comment length validation against the REAL shared module.
+ *
+ * Usage: node tests/test-comment-length.js
  */
 
 const assert = require('assert');
+const path = require('path');
+
+const { runPostComment } = require(path.join(__dirname, 'helpers', 'post-comment-harness.js'));
 
 const MAX_COMMENT_LENGTH = 65536;
 
-/**
- * Simulates the comment building logic from the GitHub Action (terraform-plan)
- * This matches the exact logic in actions/terraform-plan/action.yml
- */
-function buildPlanComment(environment, validationOutput, plan, steps, context) {
-  // Apply the backtick escaping logic as in the action
-  const escapedValidationOutput = validationOutput.replace(/`/g, '\\`');
-  const escapedPlan = plan.replace(/`/g, '\\`');
-
-  // Sticky mode (the action's default) prefixes a hidden marker line, which counts toward
-  // the comment budget. Model it when the caller supplies one so boundary maths here
-  // matches the action's real sticky output.
-  const markerPrefix = context.marker ? `${context.marker}\n` : '';
-
-  // Mirrors post-comment.js: the summary line is pinned above the fold when truncating.
-  const summaryMatch = escapedPlan.match(/^(?:Plan: .*|No changes\..*)$/m);
-  const summaryBlock = summaryMatch ? `**\`${summaryMatch[0]}\`**\n\n` : '';
-
-  const buildHeader = (pinnedSummary = '') => `${markerPrefix}#### Environment: ${environment}
-          #### Terraform Initialization ⚙️\`${steps.init.outcome}\`
-          #### Terraform Validation 🤖\`${steps.validate.outcome}\`
-          <details><summary>Validation Output</summary>
-
-          \`\`\`\n
-          ${escapedValidationOutput}
-          \`\`\`
-
-          </details>
-
-          #### Terraform Plan 📖\`${steps.plan.outcome}\`
-
-          ${pinnedSummary}<details><summary>Show Plan</summary>
-
-          \`\`\`\n
-          `;
-
-  const baseFooter = `
-          \`\`\`
-
-          </details>
-
-          *Pusher: @${context.actor}, Action: \`${context.event_name}\`, Working Directory: \`${context.working_dir}\`, Workflow: \`${context.workflow}\`*`;
-
-  let output;
-
-  // Check if comment exceeds GitHub's limit and truncate if necessary
-  if (buildHeader().length + baseFooter.length + escapedPlan.length > MAX_COMMENT_LENGTH) {
-    const availableForPlan = MAX_COMMENT_LENGTH - (buildHeader(summaryBlock).length + baseFooter.length);
-    // Notice length depends on the number it reports, so size it with a placeholder first,
-    // then render it with the real count.
-    const notice = (n) => `\n\n... [Plan truncated - showing the last ${n} characters. See workflow logs for full output.] ...`;
-    const SEPARATOR = '\n\n';
-    const maxPlanLength = availableForPlan - notice(availableForPlan).length - SEPARATOR.length;
-
-    if (maxPlanLength > 0) {
-      // Keep the END: "Plan: N to add, ..." is the last line and the one a reviewer needs.
-      const truncatedPlan = notice(maxPlanLength) + SEPARATOR + escapedPlan.slice(-maxPlanLength);
-      output = `${buildHeader(summaryBlock)}${truncatedPlan}${baseFooter}`;
-    } else {
-      output = `${markerPrefix}#### Environment: ${environment}
-
-#### Terraform Plan 📖\`${steps.plan.outcome}\`
-
-${summaryBlock}Plan output is too large to display. Please check the workflow logs for the full plan.
-
-*Pusher: @${context.actor}, Action: \`${context.event_name}\`, Working Directory: \`${context.working_dir}\`, Workflow: \`${context.workflow}\`*`;
-    }
-  } else {
-    output = `${buildHeader()}${escapedPlan}${baseFooter}`;
-  }
-
-  return output;
+async function render(options = {}) {
+  const { call } = await runPostComment({ mode: 'new', ...options });
+  return call.body;
 }
 
-/**
- * Simulates the apply comment building logic (terraform-apply-gcp)
- * This matches the exact logic in actions/terraform-apply-gcp/action.yml
- */
-function buildApplyComment(environment, plan, steps, context) {
-  // Apply the backtick escaping logic as in the action
-  const escapedPlan = plan.replace(/`/g, '\\`');
+async function findExactBoundaryLength(options = {}) {
+  const one = await render({ ...options, planBody: 'x' });
+  const two = await render({ ...options, planBody: 'xx' });
+  const baseLength = one.length - 1;
 
-  const baseHeader = `#### Environment: ${environment}
-          #### Terraform Apply 🚀\`${steps.tf_apply.outcome}\`
+  assert.strictEqual(two.length - one.length, 1, 'plan growth should be linear before truncation');
 
-          <details><summary>Show Plan</summary>
-
-          \`\`\`\n
-          `;
-
-  const baseFooter = `
-          \`\`\`
-
-          </details>
-
-          *Pusher: @${context.actor}, Action: \`${context.event_name}\`, Working Directory: \`${context.working_dir}\`, Workflow: \`${context.workflow}\`*`;
-
-  const baseLength = baseHeader.length + baseFooter.length;
-  let output;
-
-  // Check if comment exceeds GitHub's limit and truncate if necessary
-  if (baseLength + escapedPlan.length > MAX_COMMENT_LENGTH) {
-    const availableForPlan = MAX_COMMENT_LENGTH - baseLength;
-    const truncationNotice = `\n\n... [Plan truncated - showing first ${availableForPlan} characters only. See workflow logs for full output.] ...`;
-    const maxPlanLength = availableForPlan - truncationNotice.length;
-
-    if (maxPlanLength > 0) {
-      const truncatedPlan = escapedPlan.substring(0, maxPlanLength) + truncationNotice;
-      output = `${baseHeader}${truncatedPlan}${baseFooter}`;
-    } else {
-      output = `#### Environment: ${environment}
-
-              #### Terraform Apply 🚀\`${steps.tf_apply.outcome}\`
-
-              Plan output is too large to display. Please check the workflow logs for the full plan.
-
-              *Pusher: @${context.actor}, Action: \`${context.event_name}\`, Working Directory: \`${context.working_dir}\`, Workflow: \`${context.workflow}\`*`;
-    }
-  } else {
-    output = `${baseHeader}${escapedPlan}${baseFooter}`;
-  }
-
-  return output;
+  return MAX_COMMENT_LENGTH - baseLength;
 }
 
-// Test cases
-function runTests() {
+async function runTests() {
   console.log('Running comment length validation tests...\n');
-
-  const mockSteps = {
-    init: { outcome: 'success' },
-    validate: { outcome: 'success' },
-    plan: { outcome: 'success' },
-    tf_apply: { outcome: 'success' }
-  };
-
-  const mockContext = {
-    actor: 'test-user',
-    event_name: 'pull_request',
-    working_dir: 'environments/dev',
-    workflow: 'terraform-plan'
-  };
 
   let passed = 0;
   let failed = 0;
 
-  // Test 1: Small plan (should not truncate)
   try {
     console.log('Test 1: Small plan (should not truncate)');
     const smallPlan = '+ resource "aws_instance" "test" {\n  + ami = "ami-12345"\n}';
-    const comment = buildPlanComment('DEV', 'Validation successful', smallPlan, mockSteps, mockContext);
+    const comment = await render({ planBody: smallPlan, validationBody: 'Validation successful' });
     assert.strictEqual(comment.includes(smallPlan), true, 'Small plan should be included');
     assert.strictEqual(comment.includes('truncated'), false, 'Should not include truncation notice');
     assert.strictEqual(comment.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${comment.length} > ${MAX_COMMENT_LENGTH}`);
@@ -173,11 +49,10 @@ function runTests() {
     failed++;
   }
 
-  // Test 2: Large plan (should truncate)
   try {
     console.log('Test 2: Large plan (should truncate)');
     const largePlan = '+ resource "aws_instance" "test" {\n' + '+'.repeat(70000) + '\n}';
-    const comment = buildPlanComment('DEV', 'Validation successful', largePlan, mockSteps, mockContext);
+    const comment = await render({ planBody: largePlan, validationBody: 'Validation successful' });
     assert.strictEqual(comment.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${comment.length} > ${MAX_COMMENT_LENGTH}`);
     assert.strictEqual(comment.includes('truncated'), true, 'Should include truncation notice');
     console.log(`   Comment length: ${comment.length} chars (limit: ${MAX_COMMENT_LENGTH})`);
@@ -188,11 +63,10 @@ function runTests() {
     failed++;
   }
 
-  // Test 3: Extremely large plan (should truncate, not minimal message)
   try {
     console.log('Test 3: Extremely large plan (should truncate with notice)');
     const hugePlan = '+'.repeat(200000);
-    const comment = buildPlanComment('DEV', 'Validation successful', hugePlan, mockSteps, mockContext);
+    const comment = await render({ planBody: hugePlan, validationBody: 'Validation successful' });
     assert.strictEqual(comment.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${comment.length} > ${MAX_COMMENT_LENGTH}`);
     assert.strictEqual(comment.includes('truncated'), true, 'Should include truncation notice');
     console.log(`   Comment length: ${comment.length} chars (limit: ${MAX_COMMENT_LENGTH})`);
@@ -203,13 +77,11 @@ function runTests() {
     failed++;
   }
 
-  // Test 3b: Massive validation output (should show minimal message)
   try {
     console.log('Test 3b: Massive validation output (should show minimal message)');
-    // Need validation output so large that baseLength + truncationNotice > MAX_COMMENT_LENGTH
-    const massiveValidationOutput = 'x'.repeat(65000);
+    const massiveValidationOutput = 'x'.repeat(65200);
     const largePlan = '+'.repeat(1000);
-    const comment = buildPlanComment('DEV', massiveValidationOutput, largePlan, mockSteps, mockContext);
+    const comment = await render({ validationBody: massiveValidationOutput, planBody: largePlan });
     assert.strictEqual(comment.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${comment.length} > ${MAX_COMMENT_LENGTH}`);
     assert.strictEqual(comment.includes('too large to display'), true, 'Should show minimal message when base is too large');
     console.log(`   Comment length: ${comment.length} chars (limit: ${MAX_COMMENT_LENGTH})`);
@@ -220,11 +92,10 @@ function runTests() {
     failed++;
   }
 
-  // Test 4: Apply comment with small plan
   try {
     console.log('Test 4: Apply comment with small plan');
     const smallPlan = '+ resource "aws_instance" "test" {\n  + ami = "ami-12345"\n}';
-    const comment = buildApplyComment('PROD', smallPlan, mockSteps, mockContext);
+    const comment = await render({ kind: 'apply', planBody: smallPlan });
     assert.strictEqual(comment.includes(smallPlan), true, 'Small plan should be included');
     assert.strictEqual(comment.includes('truncated'), false, 'Should not include truncation notice');
     assert.strictEqual(comment.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${comment.length} > ${MAX_COMMENT_LENGTH}`);
@@ -236,13 +107,14 @@ function runTests() {
     failed++;
   }
 
-  // Test 5: Apply comment with large plan
   try {
     console.log('Test 5: Apply comment with large plan');
-    const largePlan = '+ resource "aws_instance" "test" {\n' + '+'.repeat(70000) + '\n}';
-    const comment = buildApplyComment('PROD', largePlan, mockSteps, mockContext);
+    const summary = 'Plan: 7 to add, 2 to change, 1 to destroy.';
+    const largePlan = `${'# apply noise\n'.repeat(20000)}\n${summary}`;
+    const comment = await render({ kind: 'apply', planBody: largePlan });
     assert.strictEqual(comment.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${comment.length} > ${MAX_COMMENT_LENGTH}`);
     assert.strictEqual(comment.includes('truncated'), true, 'Should include truncation notice');
+    assert.strictEqual(comment.split(summary).length - 1, 2, 'Apply summary should be pinned and retained in the tail');
     console.log(`   Comment length: ${comment.length} chars (limit: ${MAX_COMMENT_LENGTH})`);
     console.log('✓ PASSED\n');
     passed++;
@@ -251,13 +123,15 @@ function runTests() {
     failed++;
   }
 
-  // Test 6: Boundary test - plan at exact limit
   try {
-    console.log('Test 6: Boundary test - plan at exact limit');
-    const baseSize = 500; // Approximate size of template without plan
-    const planAtLimit = 'x'.repeat(MAX_COMMENT_LENGTH - baseSize - 100);
-    const comment = buildPlanComment('DEV', 'Validation successful', planAtLimit, mockSteps, mockContext);
-    assert.strictEqual(comment.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${comment.length} > ${MAX_COMMENT_LENGTH}`);
+    console.log('Test 6: Plan at the exact limit');
+    const exactPlanLength = await findExactBoundaryLength({ validationBody: 'Validation successful' });
+    const comment = await render({
+      validationBody: 'Validation successful',
+      planBody: 'x'.repeat(exactPlanLength),
+    });
+    assert.strictEqual(comment.length, MAX_COMMENT_LENGTH, `Should land exactly on the limit: ${comment.length} !== ${MAX_COMMENT_LENGTH}`);
+    assert.strictEqual(comment.includes('truncated'), false, 'Should not include truncation notice');
     console.log(`   Comment length: ${comment.length} chars (limit: ${MAX_COMMENT_LENGTH})`);
     console.log('✓ PASSED\n');
     passed++;
@@ -266,39 +140,12 @@ function runTests() {
     failed++;
   }
 
-  // Test 7: Plan right at the boundary (no truncation needed)
   try {
-    console.log('Test 7: Plan right at the boundary (no truncation needed)');
-    const baseHeader = `#### Environment: DEV
-          #### Terraform Initialization ⚙️\`success\`
-          #### Terraform Validation 🤖\`success\`
-          <details><summary>Validation Output</summary>
-
-          \`\`\`\n
-          Validation successful
-          \`\`\`
-
-          </details>
-
-          #### Terraform Plan 📖\`success\`
-
-          <details><summary>Show Plan</summary>
-
-          \`\`\`\n
-          `;
-
-    const baseFooter = `
-          \`\`\`
-
-          </details>
-
-          *Pusher: @test-user, Action: \`pull_request\`, Working Directory: \`environments/dev\`, Workflow: \`terraform-plan\`*`;
-
-    const baseLength = baseHeader.length + baseFooter.length;
-    const planExactlyAtLimit = 'x'.repeat(MAX_COMMENT_LENGTH - baseLength);
-    const comment = buildPlanComment('DEV', 'Validation successful', planExactlyAtLimit, mockSteps, mockContext);
-    assert.strictEqual(comment.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${comment.length} > ${MAX_COMMENT_LENGTH}`);
-    assert.strictEqual(comment.includes('truncated'), false, 'Should not truncate when fits');
+    console.log('Test 7: Apply at the exact limit');
+    const exactApplyLength = await findExactBoundaryLength({ kind: 'apply' });
+    const comment = await render({ kind: 'apply', planBody: 'x'.repeat(exactApplyLength) });
+    assert.strictEqual(comment.length, MAX_COMMENT_LENGTH, `Should land exactly on the limit: ${comment.length} !== ${MAX_COMMENT_LENGTH}`);
+    assert.strictEqual(comment.includes('truncated'), false, 'Should not truncate when it fits');
     console.log(`   Comment length: ${comment.length} chars (limit: ${MAX_COMMENT_LENGTH})`);
     console.log('✓ PASSED\n');
     passed++;
@@ -307,19 +154,15 @@ function runTests() {
     failed++;
   }
 
-  // Test 8: Sticky marker counts toward the budget
   try {
     console.log('Test 8: Sticky marker counts toward the comment budget');
     const marker = '<!-- terraform-plan:dev:environments/dev -->';
-    const stickyContext = { ...mockContext, marker };
     const plan = '+'.repeat(200000);
-
-    const sticky = buildPlanComment('DEV', 'Validation successful', plan, mockSteps, stickyContext);
-    const plain = buildPlanComment('DEV', 'Validation successful', plan, mockSteps, mockContext);
+    const sticky = await render({ mode: 'sticky', marker, planBody: plan, validationBody: 'Validation successful' });
+    const plain = await render({ planBody: plan, validationBody: 'Validation successful' });
 
     assert.strictEqual(sticky.startsWith(`${marker}\n`), true, 'Sticky output should lead with the marker');
     assert.strictEqual(sticky.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${sticky.length}`);
-    // The marker consumes budget, so less of the plan survives than without it.
     assert.strictEqual(
       sticky.length - plain.length <= marker.length + 1,
       true,
@@ -333,21 +176,15 @@ function runTests() {
     failed++;
   }
 
-  // Test 9: truncation keeps the end of the plan, which is where the summary line lives
   try {
     console.log('Test 9: Truncation keeps the plan summary line');
     const summary = 'Plan: 12 to add, 3 to change, 1 to destroy.';
     const plan = `${'# leading resource noise\n'.repeat(4000)}\n${summary}`;
-
-    const output = buildPlanComment('DEV', 'Validation successful', plan, mockSteps, mockContext);
+    const output = await render({ planBody: plan, validationBody: 'Validation successful' });
 
     assert.strictEqual(output.length <= MAX_COMMENT_LENGTH, true, `Should be within limit: ${output.length}`);
-    assert.strictEqual(output.includes(summary), true, 'Truncated comment must retain the plan summary line');
-    assert.strictEqual(
-      output.includes('showing the last'),
-      true,
-      'Notice should say which end survived',
-    );
+    assert.strictEqual(output.split(summary).length - 1, 2, 'Truncated comment must pin and retain the plan summary line');
+    assert.strictEqual(output.includes('showing the last'), true, 'Notice should say which end survived');
     console.log(`   Comment length: ${output.length} chars, summary retained`);
     console.log('✓ PASSED\n');
     passed++;
@@ -356,7 +193,6 @@ function runTests() {
     failed++;
   }
 
-  // Summary
   console.log('='.repeat(50));
   console.log(`Tests completed: ${passed + failed}`);
   console.log(`Passed: ${passed}`);

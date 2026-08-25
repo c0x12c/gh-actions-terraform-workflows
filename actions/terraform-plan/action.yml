@@ -147,4 +147,4 @@ runs:
       with:
         github-token: ${{ inputs.github_token }}
         script: |
-          await require(`${process.env.GITHUB_ACTION_PATH}/scripts/post-comment.js`)({ github, context });
+          await require(`${process.env.GITHUB_ACTION_PATH}/../../scripts/post-comment.js`)({ github, context });

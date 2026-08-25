@@ -70,7 +70,7 @@ test('gate keys off the step outcome, and comment skips a pre-plan failure', () 
 // collides between concurrent jobs on a self-hosted runner and exposes it to other users there.
 test('plan artifacts live in RUNNER_TEMP, 0600, not a shared /tmp', () => {
   const sources = ['actions/terraform-plan/scripts/plan.sh',
-                   'actions/terraform-plan/scripts/post-comment.js',
+                   'scripts/post-comment.js',
                    'scripts/validate.sh',
                    'scripts/gcp-plan.sh',
                    'actions/terraform-plan/action.yml',

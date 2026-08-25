@@ -1,9 +1,9 @@
 'use strict';
 
-// Posts the terraform plan result as a PR comment. Extracted from action.yml so it can be
-// linted and unit-tested directly. Inputs arrive via env (PLAN_*) - never interpolated into
+// Posts terraform plan/apply results as a PR comment. Extracted to repo-root scripts/ so all
+// actions share one implementation. Inputs arrive via env (PLAN_*) - never interpolated into
 // the caller's `script:` body, which would be a script-injection vector. Invoked as:
-//   require(`${process.env.GITHUB_ACTION_PATH}/scripts/post-comment.js`)({ github, context })
+//   require(`${process.env.GITHUB_ACTION_PATH}/../../scripts/post-comment.js`)({ github, context })
 
 const fs = require('fs');
 
@@ -11,14 +11,16 @@ const MAX_COMMENT_LENGTH = 65536; // GitHub comment body cap
 
 module.exports = async ({ github, context }) => {
   const env = process.env;
+  const kind = env.PLAN_KIND === 'apply' ? 'apply' : 'plan';
   const environment = env.PLAN_ENVIRONMENT.toUpperCase();
   const workingDir = env.PLAN_WORKING_DIR;
   const sticky = env.PLAN_COMMENT_MODE === 'sticky';
+  const defaultMarkerPrefix = kind === 'apply' ? 'terraform-apply' : 'terraform-plan';
 
   // Trimmed so a padded marker still matches. Default keys on environment+working_dir so
-  // concurrent plans on one PR keep separate comments.
+  // concurrent plans/applies on one PR keep separate comments.
   const marker = (env.PLAN_COMMENT_MARKER || '').trim() ||
-    `<!-- terraform-plan:${env.PLAN_ENVIRONMENT}:${workingDir} -->`;
+    `<!-- ${defaultMarkerPrefix}:${env.PLAN_ENVIRONMENT}:${workingDir} -->`;
   // Sticky comments are matched on their first line, so a multi-line marker never matches.
   if (sticky && /[\r\n]/.test(marker)) {
     throw new Error('comment_marker must be a single line');
@@ -33,7 +35,7 @@ module.exports = async ({ github, context }) => {
   };
   const esc = (s) => s.replace(/`/g, '\\`');
   const tmp = process.env.RUNNER_TEMP || '/tmp';
-  const validationOutput = esc(consume(`${tmp}/validate_output.txt`));
+  const validationOutput = kind === 'plan' ? esc(consume(`${tmp}/validate_output.txt`)) : '';
   // May be absent if an earlier step failed before the plan ran; post a notice rather than crash.
   const planRaw = consume(`${tmp}/plan.out`);
   const plan = planRaw ? esc(planRaw) : 'Plan did not run - an earlier step failed. See the workflow logs.';
@@ -46,8 +48,21 @@ module.exports = async ({ github, context }) => {
   // so the decision signal never depends on how much of the plan happened to fit.
   const summaryMatch = plan.match(/^(?:Plan: .*|No changes\..*)$/m);
   const summaryBlock = summaryMatch ? `**\`${summaryMatch[0]}\`**\n\n` : '';
-  const header = (pinned = '') => `${sticky ? marker + '\n' : ''}#### Environment: ${environment}
-#### Terraform Initialization ⚙️\`${env.PLAN_INIT_OUTCOME}\`
+  const fmtSection = env.PLAN_FMT_OUTCOME
+    ? `#### Terraform Format and Style 🖌\`${env.PLAN_FMT_OUTCOME}\`\n`
+    : '';
+  const header = (pinned = '') => {
+    if (kind === 'apply') {
+      return `${sticky ? marker + '\n' : ''}#### Environment: ${environment}
+#### Terraform Apply 🚀\`${env.PLAN_APPLY_OUTCOME}\`
+
+${pinned}<details><summary>Show Plan</summary>
+
+\`\`\`\n
+`;
+    }
+    return `${sticky ? marker + '\n' : ''}#### Environment: ${environment}
+${fmtSection}#### Terraform Initialization ⚙️\`${env.PLAN_INIT_OUTCOME}\`
 #### Terraform Validation 🤖\`${env.PLAN_VALIDATE_OUTCOME}\`
 <details><summary>Validation Output</summary>
 
@@ -63,6 +78,7 @@ ${pinned}<details><summary>Show Plan</summary>
 
 \`\`\`\n
 `;
+  };
 
   let output;
   if (header().length + footer.length + plan.length > MAX_COMMENT_LENGTH) {
@@ -77,7 +93,7 @@ ${pinned}<details><summary>Show Plan</summary>
     // plans where the count matters most, leaving a truncated resource dump and no summary.
     output = maxPlan > 0
       ? `${header(summaryBlock)}${notice(maxPlan)}${SEPARATOR}${plan.slice(-maxPlan)}${footer}`
-      : `${sticky ? marker + '\n' : ''}#### Environment: ${environment}\n\n#### Terraform Plan 📖\`${env.PLAN_PLAN_OUTCOME}\`\n\n${summaryBlock}Plan output is too large to display. Please check the workflow logs for the full plan.\n\n${meta}`;
+      : `${sticky ? marker + '\n' : ''}#### Environment: ${environment}\n\n#### Terraform ${kind === 'apply' ? 'Apply 🚀' : 'Plan 📖'}\`${kind === 'apply' ? env.PLAN_APPLY_OUTCOME : env.PLAN_PLAN_OUTCOME}\`\n\n${summaryBlock}Plan output is too large to display. Please check the workflow logs for the full plan.\n\n${meta}`;
   } else {
     output = `${header()}${plan}${footer}`;
   }

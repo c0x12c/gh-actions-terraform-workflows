@@ -9,48 +9,18 @@
 
 const assert = require('assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
 const ACTION = path.join(ROOT, 'actions', 'terraform-plan', 'action.yml');
-const POST = path.join(ROOT, 'actions', 'terraform-plan', 'scripts', 'post-comment.js');
-const post = require(POST);
+const { runPostComment } = require(path.join(__dirname, 'helpers', 'post-comment-harness.js'));
 
 const MAX = 65536;
 const DEFAULT_MARKER = '<!-- terraform-plan:staging:live/workloads -->';
+const DEFAULT_APPLY_MARKER = '<!-- terraform-apply:staging:live/workloads -->';
 
-async function run({ mode = 'sticky', marker = '', prNumber = '', workingDir = 'live/workloads',
-  planSize = 100, planBody = null, existing = [], contextIssue = 5, planExists = true } = {}) {
-  // Per-run RUNNER_TEMP, matching what the action reads. Fixed /tmp paths were the collision
-  // v3.1.1 fixed in the shipped script; a test on fixed paths exercises only the fallback and
-  // two suites on one machine delete each other's fixtures.
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-comment-'));
-  process.env.RUNNER_TEMP = tmp;
-  fs.writeFileSync(path.join(tmp, 'validate_output.txt'), 'valid');
-  if (planExists) fs.writeFileSync(path.join(tmp, 'plan.out'), planBody ?? 'P'.repeat(planSize));
-  Object.assign(process.env, {
-    PLAN_ENVIRONMENT: 'staging', PLAN_WORKING_DIR: workingDir, PLAN_COMMENT_MODE: mode,
-    PLAN_COMMENT_MARKER: marker, PLAN_PR_NUMBER: prNumber, PLAN_INIT_OUTCOME: 'success',
-    PLAN_VALIDATE_OUTCOME: 'success', PLAN_PLAN_OUTCOME: 'success', PLAN_ACTOR: 'tester',
-    PLAN_EVENT_NAME: 'pull_request', PLAN_WORKFLOW: 'Plan',
-  });
-  const calls = [];
-  let pageOpts = null;
-  const github = {
-    paginate: async (_fn, o) => { pageOpts = o; return existing; },
-    rest: { issues: {
-      listComments: 'lc',
-      updateComment: async (o) => calls.push({ op: 'update', id: o.comment_id, body: o.body }),
-      createComment: async (o) => calls.push({ op: 'create', issue: o.issue_number, body: o.body }),
-    } },
-  };
-  try {
-    await post({ github, context: { repo: { owner: 'o', repo: 'r' }, issue: { number: contextIssue } } });
-  } finally {
-    fs.rmSync(tmp, { recursive: true, force: true });
-  }
-  return { call: calls[0], calls, pageOpts };
+async function run(options = {}) {
+  return runPostComment(options);
 }
 
 function declaredDefault(name) {
@@ -151,6 +121,41 @@ async function test(name, fn) {
     assert.strictEqual(occurrences, 2, `summary should appear pinned and in the plan tail, saw ${occurrences}`);
     assert.ok(call.body.indexOf(summary) < call.body.indexOf('<summary>Show Plan</summary>'),
       'the pinned copy must come before the collapsed plan');
+  });
+
+  await test('apply renders its own header and omits the validation section', async () => {
+    const { call } = await run({ kind: 'apply' });
+    assert.ok(call.body.includes('#### Terraform Apply 🚀`success`'));
+    assert.ok(!call.body.includes('#### Terraform Validation'));
+    assert.ok(!call.body.includes('Validation Output'));
+  });
+
+  await test('apply truncation keeps the summary pinned and in the retained tail', async () => {
+    const summary = 'Plan: 9 to add, 4 to change, 2 to destroy.';
+    const { call } = await run({ kind: 'apply', planBody: `${'# apply noise\n'.repeat(20000)}\n${summary}` });
+    assert.ok(call.body.length <= MAX, `body ${call.body.length} exceeds ${MAX}`);
+    assert.ok(call.body.includes('showing the last'), 'notice should say which end survived');
+    const occurrences = call.body.split(summary).length - 1;
+    assert.strictEqual(occurrences, 2, `summary should appear pinned and in the plan tail, saw ${occurrences}`);
+  });
+
+  await test('default marker differs between plan and apply for the same target', async () => {
+    const planResult = await run({ kind: 'plan' });
+    const applyResult = await run({ kind: 'apply' });
+    assert.ok(planResult.call.body.startsWith(DEFAULT_MARKER));
+    assert.ok(applyResult.call.body.startsWith(DEFAULT_APPLY_MARKER));
+  });
+
+  await test('fmt output renders between environment and initialization, and is omitted when unset', async () => {
+    const withFmt = await run({ fmtOutcome: 'success' });
+    const withoutFmt = await run();
+    const envLine = '#### Environment: STAGING';
+    const fmtLine = '#### Terraform Format and Style 🖌`success`';
+    const initLine = '#### Terraform Initialization ⚙️`success`';
+    assert.ok(withFmt.call.body.includes(fmtLine));
+    assert.ok(!withoutFmt.call.body.includes('#### Terraform Format and Style'));
+    assert.ok(withFmt.call.body.indexOf(envLine) < withFmt.call.body.indexOf(fmtLine));
+    assert.ok(withFmt.call.body.indexOf(fmtLine) < withFmt.call.body.indexOf(initLine));
   });
 
   await test('a missing plan.out posts a notice, not a crash', async () => {
