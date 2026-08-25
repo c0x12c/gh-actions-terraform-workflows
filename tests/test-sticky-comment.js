@@ -9,6 +9,7 @@
 
 const assert = require('assert');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 
 const ROOT = path.join(__dirname, '..');
@@ -20,10 +21,14 @@ const MAX = 65536;
 const DEFAULT_MARKER = '<!-- terraform-plan:staging:live/workloads -->';
 
 async function run({ mode = 'sticky', marker = '', prNumber = '', workingDir = 'live/workloads',
-  planSize = 100, existing = [], contextIssue = 5, planExists = true } = {}) {
-  fs.writeFileSync('/tmp/validate_output.txt', 'valid');
-  if (planExists) fs.writeFileSync('/tmp/plan.out', 'P'.repeat(planSize));
-  else fs.rmSync('/tmp/plan.out', { force: true });
+  planSize = 100, planBody = null, existing = [], contextIssue = 5, planExists = true } = {}) {
+  // Per-run RUNNER_TEMP, matching what the action reads. Fixed /tmp paths were the collision
+  // v3.1.1 fixed in the shipped script; a test on fixed paths exercises only the fallback and
+  // two suites on one machine delete each other's fixtures.
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'plan-comment-'));
+  process.env.RUNNER_TEMP = tmp;
+  fs.writeFileSync(path.join(tmp, 'validate_output.txt'), 'valid');
+  if (planExists) fs.writeFileSync(path.join(tmp, 'plan.out'), planBody ?? 'P'.repeat(planSize));
   Object.assign(process.env, {
     PLAN_ENVIRONMENT: 'staging', PLAN_WORKING_DIR: workingDir, PLAN_COMMENT_MODE: mode,
     PLAN_COMMENT_MARKER: marker, PLAN_PR_NUMBER: prNumber, PLAN_INIT_OUTCOME: 'success',
@@ -43,7 +48,7 @@ async function run({ mode = 'sticky', marker = '', prNumber = '', workingDir = '
   try {
     await post({ github, context: { repo: { owner: 'o', repo: 'r' }, issue: { number: contextIssue } } });
   } finally {
-    for (const f of ['/tmp/plan.out', '/tmp/validate_output.txt']) fs.rmSync(f, { force: true });
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
   return { call: calls[0], calls, pageOpts };
 }
@@ -133,6 +138,19 @@ async function test(name, fn) {
       const { call } = await run({ planSize: s });
       assert.ok(call.body.length <= MAX, `size ${s} -> ${call.body.length}`);
     }
+  });
+
+  await test('a truncated comment keeps the plan summary, and pins it above the fold', async () => {
+    const summary = 'Plan: 12 to add, 3 to change, 1 to destroy.';
+    const { call } = await run({ planBody: `${'# resource noise\n'.repeat(20000)}\n${summary}` });
+    assert.ok(call.body.length <= MAX, `body ${call.body.length} exceeds ${MAX}`);
+    assert.ok(call.body.includes('showing the last'), 'notice should say which end survived');
+    // Twice: once pinned above the fold, once still inside the retained tail of the plan.
+    // Head-truncation would leave only the pinned copy, so this is what catches a revert.
+    const occurrences = call.body.split(summary).length - 1;
+    assert.strictEqual(occurrences, 2, `summary should appear pinned and in the plan tail, saw ${occurrences}`);
+    assert.ok(call.body.indexOf(summary) < call.body.indexOf('<summary>Show Plan</summary>'),
+      'the pinned copy must come before the collapsed plan');
   });
 
   await test('a missing plan.out posts a notice, not a crash', async () => {
