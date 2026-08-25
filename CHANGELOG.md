@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v3.2.0] - 2026-08-25
+
+### Changed
+
+- All three actions that post a terraform PR comment now go through one shared `scripts/post-comment.js`. `terraform-plan-gcp` and `terraform-apply-gcp` each carried their own inline copy in `action.yml`, which is why the v3.1.3 truncation fix reached neither. The module takes a `kind` of `plan` or `apply`; `terraform-apply` (AWS) still posts no comment and is unchanged. `post-comment.js` moves from `actions/terraform-plan/scripts/` to the repo-root `scripts/` that already holds `apply.sh`, `gcp-plan.sh` and `validate.sh` - a shared file cannot live under one action's directory.
+- **GCP comment content changes.** `terraform-plan-gcp` did not truncate at all, so a plan over 65536 characters failed the create-comment call outright and posted nothing; it now truncates. `terraform-apply-gcp` kept the first N characters and so dropped the `Plan:` summary; it now keeps the tail. Both now pin the summary line above the `Show Plan` fold. A consumer diffing `@v3` will see these comments render differently, and that is the fix.
+
+### Fixed
+
+- Both GCP actions interpolated `${{ }}` expressions directly into their `github-script` body - environment, working directory, actor, workflow and step outcomes. `terraform-plan` documents why that is a script-injection vector and passes everything through `env:`; the GCP actions now do the same. They also read `plan.out` unguarded (a crash when an earlier step failed before the plan ran, where `terraform-plan` posts a notice) and did not await `createComment`. `terraform-apply-gcp` moves from `actions/github-script@v7` to `v8`, matching the others.
+- The default sticky comment marker was hardcoded `terraform-plan:`. With `comment_mode: sticky` on both GCP actions for one environment and working directory, plan and apply resolved to the same marker, so the apply comment would update the plan comment in place - destroying the plan silently, with a green workflow. The default is now keyed on the kind.
+
+### Added
+
+- `comment_mode`, `comment_marker` and `pr_number` inputs on `terraform-plan-gcp` and `terraform-apply-gcp`. `comment_mode` defaults to `new`, not `sticky`, so existing consumers see no change beyond truncation working. Each action's comment step condition was widened to `github.event_name == 'pull_request' || inputs.pr_number != ''`, since a `pr_number` input that no-ops on the one event where it matters is worse than no input.
+
+### Removed
+
+- `tests/test-comment-length.js` no longer reimplements the comment builders. It carried two copies - one of `post-comment.js`, one of the apply-gcp inline block - which existed only because neither original was reachable from a test. Both are deleted; the file now drives the real module through a `tests/helpers/post-comment-harness.js` shared with `tests/test-sticky-comment.js`. Verified by negative control: changing the shipped module back to head-truncation now fails both test files (2 of 10 and 2 of 17), where before it passed the whole suite untouched. Its boundary coverage is a superset of what it replaced - the two approximate `<=` limit cases became one exact `=== 65536` assertion plus the apply-side equivalent.
+
 ## [v3.1.3] - 2026-08-25
 
 ### Fixed
@@ -16,7 +36,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Known gaps
 
-- This fix covers `terraform-plan` only. `terraform-apply-gcp` still head-truncates from its own inline copy in `action.yml`, and `terraform-plan-gcp` does not truncate at all - a plan over 65536 characters fails the create-comment call outright rather than posting a shortened one. Neither is reachable from `scripts/post-comment.js`, so no test in this repo covers them. Consolidating all three onto the one module is the fix; it is a larger change than a patch release should carry.
+- Closed in v3.2.0: all three comment paths now share one module.
 
 ## [v3.1.2] - 2026-07-30
 

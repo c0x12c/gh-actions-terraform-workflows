@@ -36,6 +36,29 @@ inputs:
     description: "Whether to refresh the state before planning (true/false)"
     required: false
     default: "true"
+  comment_mode:
+    description: >-
+      How to post the plan comment. "sticky" keeps one comment per plan and updates it
+      in place, so repeated pushes do not bury the PR under a comment per environment
+      per run. Set "new" (default) to append a fresh comment on every run instead.
+    required: false
+    default: "new"
+  comment_marker:
+    description: >-
+      Hidden HTML marker identifying the sticky comment to update. Only used when
+      comment_mode is "sticky". Left empty it derives
+      "<!-- terraform-plan:<environment>:<working_dir> -->", which keeps concurrent plans on
+      the same PR in separate comments; set it explicitly to group them differently. It
+      cannot be defaulted literally here because the inputs context is unavailable when
+      GitHub evaluates input defaults.
+    required: false
+    default: ""
+  pr_number:
+    description: >-
+      PR number to comment on. Defaults to the PR from the triggering event; set it
+      explicitly so a workflow_dispatch-driven plan can still post a comment.
+    required: false
+    default: ""
 
 runs:
   using: "composite"
@@ -107,47 +130,24 @@ runs:
 
     - name: Post Terraform Plan Results to PR
       uses: actions/github-script@v8
-      if: github.event_name == 'pull_request'
+      if: ${{ github.event_name == 'pull_request' || inputs.pr_number != '' }}
+      env:
+        # Passed via env, never interpolated into the script body: consumer-controlled inputs
+        # in a github-script body are a script-injection vector.
+        PLAN_KIND: plan
+        PLAN_ENVIRONMENT: ${{ inputs.environment }}
+        PLAN_WORKING_DIR: ${{ inputs.working_dir }}
+        PLAN_COMMENT_MODE: ${{ inputs.comment_mode }}
+        PLAN_COMMENT_MARKER: ${{ inputs.comment_marker }}
+        PLAN_PR_NUMBER: ${{ inputs.pr_number }}
+        PLAN_FMT_OUTCOME: ${{ steps.fmt.outcome }}
+        PLAN_INIT_OUTCOME: ${{ steps.init.outcome }}
+        PLAN_VALIDATE_OUTCOME: ${{ steps.validate.outcome }}
+        PLAN_PLAN_OUTCOME: ${{ steps.plan.outcome }}
+        PLAN_ACTOR: ${{ github.actor }}
+        PLAN_EVENT_NAME: ${{ github.event_name }}
+        PLAN_WORKFLOW: ${{ github.workflow }}
       with:
         github-token: ${{ inputs.github_token }}
         script: |
-          const fs = require('fs')
-          const tmp = process.env.RUNNER_TEMP || '/tmp'
-
-          const validationOutput = fs.readFileSync(`${tmp}/validate_output.txt`, 'utf8').replace(/`/g, '\\`')
-          fs.unlinkSync(`${tmp}/validate_output.txt`)
-
-          const plan = fs.readFileSync(`${tmp}/plan.out`, 'utf8').replace(/`/g, '\\`')
-          fs.unlinkSync(`${tmp}/plan.out`)
-
-          const environment = '${{ inputs.environment }}'.toUpperCase()
-          const output = `#### Environment: ${environment}
-          #### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
-          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
-          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
-          <details><summary>Validation Output</summary>
-
-          \`\`\`\n
-          ${validationOutput}
-          \`\`\`
-
-          </details>
-
-          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
-
-          <details><summary>Show Plan</summary>
-
-          \`\`\`\n
-          ${plan}
-          \`\`\`
-
-          </details>
-
-          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ inputs.working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
-
-          github.rest.issues.createComment({
-            issue_number: context.issue.number,
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            body: output
-          })
+          await require(`${process.env.GITHUB_ACTION_PATH}/../../scripts/post-comment.js`)({ github, context });
