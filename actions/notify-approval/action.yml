@@ -19,7 +19,7 @@ inputs:
     required: false
     default: ""
   plan_changes:
-    description: "plan_changes output from actions/terraform-plan. Addresses only."
+    description: "plan_changes output from actions/terraform-plan. Resource headers, never attribute values."
     required: false
     default: ""
   plan_total:

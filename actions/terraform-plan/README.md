@@ -27,11 +27,12 @@ Here are the required inputs for the workflow:
 | Output | Description |
 |---|---|
 | `plan_counts` | The plan's summary line, e.g. `Plan: 0 to add, 2 to change, 0 to destroy.` or `No changes.` |
-| `plan_changes` | Addresses of changing resources, one per line, capped at `plan_max_rows`. Empty when nothing changes. |
+| `plan_changes` | One header per changing resource (`<address> will be updated in-place`), capped at `plan_max_rows`. Empty when nothing changes. |
 | `plan_total` | Number of changing resources, before the cap |
 | `has_destroy` | `true` when the plan destroys or replaces anything |
 
-`plan_changes` carries **resource addresses only, never attribute values**. Callers forward these
+`plan_changes` carries one plan header per line - a resource address and its action - and **never an
+attribute value**. Callers forward these
 outputs to chat and paging systems, where a rendered plan's `~ attr = value` lines - database
 passwords, connection strings - would outlive the run and reach a wider audience than repo auth
 allows. Pair with [`notify-approval`](../notify-approval) to post them.

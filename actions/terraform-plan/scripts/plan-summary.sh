@@ -59,7 +59,7 @@ emit "has_destroy=${has_destroy}"
 # under review, so the payload is not fully under this script's control.
 delim="PLAN_EOF_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 emit "changes<<${delim}"
-# Empty, never a placeholder: the output is documented as addresses only, and a caller rendering
+# Empty, never a placeholder: the output is documented as resource headers, and a caller rendering
 # it as a list would print the placeholder as though it were a resource.
 if [ -n "$changes" ]; then
   printf '%s\n' "$changes" >> "${GITHUB_OUTPUT:-/dev/null}"

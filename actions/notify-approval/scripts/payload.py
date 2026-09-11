@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build the Slack Block Kit payload announcing a terraform apply awaiting approval.
 
-Carries counts and resource addresses only. Attribute diffs are excluded deliberately: a rendered
+Carries counts and one header per changing resource. Attribute diffs are excluded deliberately: a rendered
 plan is not secret-masked, and its value lines hold database passwords and connection strings that
 would outlive the run once they reach a channel.
 """
