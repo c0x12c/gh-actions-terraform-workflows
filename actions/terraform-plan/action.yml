@@ -50,12 +50,32 @@ inputs:
       GitHub evaluates input defaults.
     required: false
     default: ""
+  plan_max_rows:
+    description: >-
+      How many resource addresses to place in the plan_changes output. The job summary is
+      unaffected and always carries the full plan.
+    required: false
+    default: "20"
   pr_number:
     description: >-
       PR number to comment on. Defaults to the PR from the triggering event; set it
       explicitly so a workflow_dispatch-driven plan can still post a comment.
     required: false
     default: ""
+
+outputs:
+  plan_counts:
+    description: "The plan's summary line, e.g. \"Plan: 0 to add, 2 to change, 0 to destroy.\" or \"No changes.\""
+    value: ${{ steps.plan_summary.outputs.counts }}
+  plan_changes:
+    description: "Resource addresses that change, one per line, capped at plan_max_rows. Addresses only - never attribute values, so this is safe to forward to chat."
+    value: ${{ steps.plan_summary.outputs.changes }}
+  plan_total:
+    description: "Total count of changing resources, before the plan_max_rows cap."
+    value: ${{ steps.plan_summary.outputs.total }}
+  has_destroy:
+    description: "true when the plan destroys or replaces any resource."
+    value: ${{ steps.plan_summary.outputs.has_destroy }}
 
 runs:
   using: "composite"
@@ -123,6 +143,16 @@ runs:
       run: |
         echo "::error:: Terraform plan step failed - see the plan output in the PR comment and the logs (plan_exitcode=${{ steps.plan.outputs.plan_exitcode }}; 0 means a post-plan error such as terraform show)"
         exit 1
+
+    # Before the comment step so the summary exists even when commenting is skipped - which is
+    # every tag build, since the comment requires a pull request.
+    - name: Summarise the plan
+      id: plan_summary
+      if: ${{ !cancelled() && steps.plan.outcome != 'skipped' }}
+      shell: bash
+      env:
+        PLAN_MAX_ROWS: ${{ inputs.plan_max_rows }}
+      run: bash "${GITHUB_ACTION_PATH}/scripts/plan-summary.sh"
 
     # Comment when the plan actually ran (success or failure) - not after a pre-plan failure
     # that skips it, which would leave post-comment.js nothing to read. Runs even though the
