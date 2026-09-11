@@ -38,10 +38,10 @@ function run(planOut, extraEnv = {}) {
   const out = {};
   const lines = fs.readFileSync(outFile, 'utf8').split('\n');
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].includes('<<PLAN_EOF')) {
-      const key = lines[i].split('<<')[0];
+    if (lines[i].includes('<<')) {
+      const [key, delim] = lines[i].split('<<');
       const buf = [];
-      for (i++; i < lines.length && lines[i] !== 'PLAN_EOF'; i++) buf.push(lines[i]);
+      for (i++; i < lines.length && lines[i] !== delim; i++) buf.push(lines[i]);
       out[key] = buf.join('\n');
     } else if (lines[i].includes('=')) {
       const idx = lines[i].indexOf('=');
@@ -133,6 +133,21 @@ test('caps rows at plan_max_rows while total stays truthful', () => {
   });
   assert.strictEqual(out.changes.split('\n').length, 5);
   assert.strictEqual(out.total, '30', 'total must not be capped');
+});
+
+test('a plan carrying delimiter-shaped lines injects no extra output', () => {
+  // Two layers stop heredoc-termination injection. The change filter admits only lines carrying
+  // "will be " or "must be ", which no bare delimiter word does, and the delimiter is randomised
+  // so even a line that did reach the payload could not close the block. This pins both.
+  const { out } = run(
+    '  # PLAN_EOF\n' +
+      '  # injected=surprise\n' +
+      '  # module.a.aws_s3_bucket.this will be updated in-place\n\n' +
+      'Plan: 0 to add, 1 to change, 0 to destroy.\n',
+  );
+  assert.strictEqual(out.injected, undefined, 'nothing may be injected as a separate output');
+  assert.strictEqual(out.changes, 'module.a.aws_s3_bucket.this will be updated in-place');
+  assert.strictEqual(out.total, '1', 'delimiter-shaped lines are not resource rows');
 });
 
 test('writes the full plan into the job summary', () => {

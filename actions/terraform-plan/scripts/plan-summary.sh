@@ -49,9 +49,13 @@ fi
 emit "counts=${counts:-unknown}"
 emit "total=${total:-0}"
 emit "has_destroy=${has_destroy}"
-emit "changes<<PLAN_EOF"
+# Random delimiter, not a fixed word: a line in the payload equal to the delimiter would close
+# the heredoc early and let the rest be read as further outputs. Addresses come from the .tf
+# under review, so the payload is not fully under this script's control.
+delim="PLAN_EOF_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+emit "changes<<${delim}"
 printf '%s\n' "${changes:-(no resource changes)}" >> "${GITHUB_OUTPUT:-/dev/null}"
-emit "PLAN_EOF"
+emit "${delim}"
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   {
