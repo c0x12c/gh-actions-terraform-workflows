@@ -150,6 +150,53 @@ test('a plan carrying delimiter-shaped lines injects no extra output', () => {
   assert.strictEqual(out.total, '1', 'delimiter-shaped lines are not resource rows');
 });
 
+test('ignores data-source reads, which are not changing resources', () => {
+  // Terraform excludes these from its own add/change/destroy counts, so counting them would make
+  // total disagree with the summary line the same notice prints.
+  const { out } = run(
+    '  # data.aws_ami.ubuntu will be read during apply\n'
+      + '  #  (depends on a resource or a module with changes pending)\n'
+      + '  # module.a.aws_s3_bucket.this will be updated in-place\n\n'
+      + 'Plan: 0 to add, 1 to change, 0 to destroy.\n',
+  );
+  assert.strictEqual(out.total, '1');
+  assert.ok(!out.changes.includes('data.aws_ami'), 'data source must not be listed');
+});
+
+test('an address embedding a destructive phrase is judged by its verb', () => {
+  const { out } = run(
+    '  # aws_instance.foo["will be destroyed"] will be updated in-place\n\n'
+      + 'Plan: 0 to add, 1 to change, 0 to destroy.\n',
+  );
+  assert.strictEqual(out.has_destroy, 'false', 'the verb is "updated in-place"');
+  assert.strictEqual(out.total, '1');
+});
+
+test('emits an empty changes payload rather than a placeholder address', () => {
+  const { out } = run('No changes. Your infrastructure matches the configuration.\n');
+  assert.strictEqual(out.counts, 'No changes. Your infrastructure matches the configuration.');
+  assert.strictEqual(out.total, '0');
+  assert.strictEqual(out.changes, '', 'a caller rendering this as a list must print nothing');
+});
+
+test('a plan containing a fence cannot close the job summary block early', () => {
+  const planWithFence = '  # module.a.aws_s3_bucket.this will be updated in-place\n'
+    + '  ~ resource "aws_s3_bucket" "this" {\n'
+    + '      ~ policy = <<-EOT\n'
+    + '```\n'
+    + 'closing fence inside a heredoc\n'
+    + '```\n'
+    + '        EOT\n'
+    + '    }\n\n'
+    + 'Plan: 0 to add, 1 to change, 0 to destroy.\n';
+  const { summary } = run(planWithFence);
+  assert.ok(summary.includes('closing fence inside a heredoc'), 'body survives');
+  assert.ok(summary.includes('Plan: 0 to add, 1 to change, 0 to destroy.'), 'tail survives');
+  const opener = summary.match(/^(`{3,})terraform$/m);
+  assert.ok(opener, 'a fence is opened');
+  assert.ok(opener[1].length >= 4, 'fence must outrun the plan content');
+});
+
 test('writes the full plan into the job summary', () => {
   const { summary } = run(UPDATE_ONLY);
   assert.ok(summary.includes('### Terraform plan'), 'heading');

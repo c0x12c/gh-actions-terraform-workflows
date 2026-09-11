@@ -28,19 +28,24 @@ if [ ! -f "$PLAN_OUT" ]; then
   exit 0
 fi
 
-# "must be replaced" as well as "will be ...": terraform renders a replacement with a different
-# verb, so a regex matching only "will be" drops the highest-risk rows while has_destroy below
-# still reports true - a warning whose offending resources are missing from it.
-CHANGE_RE="^  # .*(will be|must be) "
+# The verb list is explicit and end-anchored, which buys two things a loose "will be" would not.
+#
+# It excludes "will be read during apply", which terraform emits for data sources. Those are not
+# changing resources and do not appear in its add/change/destroy counts, so matching them would
+# make total disagree with the plan's own summary line.
+#
+# It also stops an ADDRESS containing one of these phrases from matching, since the verb must end
+# the line - aws_instance.foo["will be destroyed"] will be updated in-place is an update.
+CHANGE_RE="^  # .+ (will be (created|destroyed|updated in-place)|must be replaced)\$"
 
 counts=$(grep -E "^(Plan:|No changes\.)" "$PLAN_OUT" | tail -1 || true)
 changes=$(grep -E "$CHANGE_RE" "$PLAN_OUT" | sed 's/^  # //' | head -"$MAX_ROWS" || true)
 total=$(grep -cE "$CHANGE_RE" "$PLAN_OUT" || true)
 
-# Anchored to the resource-header marker, not a bare file search: an attribute value containing
-# "will be destroyed" would otherwise report a destructive plan on a harmless one, and a warning
-# that cries wolf trains the reflex to approve past it.
-if grep -qE "^  # .*(will be destroyed|must be replaced)" "$PLAN_OUT"; then
+# Anchored to the resource header and to end-of-line, not a bare file search: an attribute value -
+# or an address embedding the phrase - would otherwise report a destructive plan on a harmless one,
+# and a warning that cries wolf trains the reflex to approve past it.
+if grep -qE "^  # .+ (will be destroyed|must be replaced)\$" "$PLAN_OUT"; then
   has_destroy=true
 else
   has_destroy=false
@@ -54,7 +59,11 @@ emit "has_destroy=${has_destroy}"
 # under review, so the payload is not fully under this script's control.
 delim="PLAN_EOF_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 emit "changes<<${delim}"
-printf '%s\n' "${changes:-(no resource changes)}" >> "${GITHUB_OUTPUT:-/dev/null}"
+# Empty, never a placeholder: the output is documented as addresses only, and a caller rendering
+# it as a list would print the placeholder as though it were a resource.
+if [ -n "$changes" ]; then
+  printf '%s\n' "$changes" >> "${GITHUB_OUTPUT:-/dev/null}"
+fi
 emit "${delim}"
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
@@ -69,9 +78,13 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo
     echo '<details><summary>Full plan</summary>'
     echo
-    echo '```terraform'
+    # Fence one backtick longer than the longest run the plan itself contains. A terraform string
+    # or heredoc holding ``` would otherwise close the block and hide the rest of the "full" plan.
+    longest=$(grep -oE '^`+' "$PLAN_OUT" | awk '{ if (length($0) > n) n = length($0) } END { print n+0 }' || true)
+    fence=$(printf '`%.0s' $(seq 1 $(( longest > 2 ? longest + 1 : 3 ))))
+    echo "${fence}terraform"
     cat "$PLAN_OUT"
-    echo '```'
+    echo "${fence}"
     echo
     echo '</details>'
   } >> "$GITHUB_STEP_SUMMARY"
