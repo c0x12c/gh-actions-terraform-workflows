@@ -1,0 +1,49 @@
+name: "Notify approval waiting"
+description: >-
+  Post a chat notice that a terraform apply is waiting for approval, carrying the plan summary.
+  Pair with actions/terraform-plan and feed it that action's outputs.
+
+  Announce this from the PLAN job, not the apply job. A job declaring an `environment:` does not
+  start until someone approves, so an apply-job step could never announce its own gate.
+
+inputs:
+  webhook_url:
+    description: "Slack incoming webhook. Empty skips the notification without failing."
+    required: false
+    default: ""
+  environment:
+    description: "Environment being applied, e.g. prod."
+    required: true
+  plan_counts:
+    description: "plan_counts output from actions/terraform-plan."
+    required: false
+    default: ""
+  plan_changes:
+    description: "plan_changes output from actions/terraform-plan. Addresses only."
+    required: false
+    default: ""
+  plan_total:
+    description: "plan_total output from actions/terraform-plan."
+    required: false
+    default: "0"
+  has_destroy:
+    description: "has_destroy output from actions/terraform-plan."
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Post the approval notice
+      shell: bash
+      env:
+        SLACK_WEBHOOK_URL: ${{ inputs.webhook_url }}
+        ENVIRONMENT: ${{ inputs.environment }}
+        PLAN_COUNTS: ${{ inputs.plan_counts }}
+        PLAN_CHANGES: ${{ inputs.plan_changes }}
+        PLAN_TOTAL: ${{ inputs.plan_total }}
+        HAS_DESTROY: ${{ inputs.has_destroy }}
+        REPO: ${{ github.repository }}
+        REF_NAME: ${{ github.ref_name }}
+        RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      run: bash "${GITHUB_ACTION_PATH}/scripts/notify.sh"
