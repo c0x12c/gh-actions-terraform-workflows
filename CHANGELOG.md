@@ -8,7 +8,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
-- **`terraform-plan` writes the rendered plan to the run's job summary.** That page also carries the **Review pending deployments** button, so an approver reads the plan where they approve it. The heading flags a plan that destroys or replaces resources.
+- **`terraform-plan` writes the rendered plan to the run's job summary.** That page also carries the **Review pending deployments** button, so an approver reads the plan where they approve it.
+
+  The summary heading flags a plan that destroys or replaces resources.
 
   This matters most on a tag build. The PR comment needs a pull request, so a tag-time plan previously rendered nowhere - and on a tag-driven deploy that is the plan being approved.
 
