@@ -12,7 +12,7 @@ Pair it with [`terraform-plan`](../terraform-plan) and feed it that action's out
 | `webhook_url` | Slack incoming webhook. Empty skips delivery without failing. | `false` | `''` |
 | `environment` | Environment being applied, e.g. `prod` | `true` | |
 | `plan_counts` | `plan_counts` output from `terraform-plan` | `false` | `''` |
-| `plan_changes` | `plan_changes` output from `terraform-plan`. Addresses only. | `false` | `''` |
+| `plan_changes` | `plan_changes` output from `terraform-plan`. Headers, never attribute values. | `false` | `''` |
 | `plan_total` | `plan_total` output from `terraform-plan` | `false` | `0` |
 | `has_destroy` | `has_destroy` output from `terraform-plan` | `false` | `false` |
 
@@ -55,7 +55,7 @@ own failure in the run, so a dead webhook stays visible rather than silently doi
 
 ## What the notice carries
 
-Counts and resource **addresses only, never attribute diffs**. A rendered plan is not
+Counts, and one header per changing resource - address plus action. **Never an attribute diff.** A rendered plan is not
 secret-masked, and its `~ attr = value` lines hold database passwords and connection strings. A job
 log sits behind repo auth and ages out; a chat channel is searchable, forwardable and retained, so
 the same bytes have a much longer half-life there.

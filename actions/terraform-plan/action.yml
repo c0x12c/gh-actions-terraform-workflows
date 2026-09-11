@@ -68,7 +68,7 @@ outputs:
     description: "The plan's summary line, e.g. \"Plan: 0 to add, 2 to change, 0 to destroy.\" or \"No changes.\""
     value: ${{ steps.plan_summary.outputs.counts }}
   plan_changes:
-    description: "Resource addresses that change, one per line, capped at plan_max_rows. Addresses only - never attribute values, so this is safe to forward to chat."
+    description: "One plan header per changing resource - its address and action, e.g. 'module.a.aws_s3_bucket.this will be updated in-place' - capped at plan_max_rows. Never an attribute value, so this is safe to forward to chat."
     value: ${{ steps.plan_summary.outputs.changes }}
   plan_total:
     description: "Total count of changing resources, before the plan_max_rows cap."
