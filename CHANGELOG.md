@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
-- **`terraform-plan` writes the rendered plan to the run's job summary.** That page also carries the **Review pending deployments** button, so an approver reads the plan where they approve it.
+- **`terraform-plan` writes the full rendered plan to the run's job summary.** That page also carries the **Review pending deployments** button, so an approver reads the whole plan where they approve it, without opening a job.
 
   The summary heading flags a plan that destroys or replaces resources.
 
