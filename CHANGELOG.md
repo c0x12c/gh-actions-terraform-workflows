@@ -8,13 +8,29 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 
-- `terraform-plan` writes the full rendered plan to the run's **job summary**. That page also carries the **Review pending deployments** button, so an approver reads the plan where they approve it instead of opening a job. This matters most on a tag build: the PR comment requires a pull request, so without it a tag-time plan renders nowhere - and on a tag-driven deploy that is the plan being approved. The heading flags a plan that destroys or replaces resources. No wiring: a consumer gets this by bumping the version.
-- `terraform-plan` gains four outputs - `plan_counts`, `plan_changes`, `plan_total`, `has_destroy` - and a `plan_max_rows` input (default 20) capping `plan_changes`. `plan_changes` carries one plan header per line - a resource address and its action, such as `module.a.aws_db_instance.this will be updated in-place` - and **never an attribute value**: callers forward these to chat and paging systems, where a rendered plan's `~ attr = value` lines hold database passwords and connection strings that outlive the run. The job summary sits behind the same auth as the log, so only it carries the plan verbatim.
-- `notify-approval`, a new action that turns those outputs into a chat notice. An empty `webhook_url` skips delivery without failing, so a service that has not configured one is not blocked from deploying. Announce it from the plan job: a job declaring `environment:` does not start until someone approves, so an apply-job step could never announce its own gate.
+- **`terraform-plan` writes the full rendered plan to the run's job summary.** That page also carries the **Review pending deployments** button, so an approver reads the whole plan where they approve it, without opening a job.
+
+  The summary heading flags a plan that destroys or replaces resources.
+
+  This matters most on a tag build. The PR comment needs a pull request, so a tag-time plan previously rendered nowhere - and on a tag-driven deploy that is the plan being approved.
+
+  A consumer gets it by bumping the version. There is nothing to wire.
+
+- **`terraform-plan` gains four outputs:** `plan_counts`, `plan_changes`, `plan_total`, `has_destroy`. A new `plan_max_rows` input (default 20) caps `plan_changes`.
+
+  `plan_changes` carries one plan header per line - a resource address and its action, such as `module.a.aws_db_instance.this will be updated in-place`. Never an attribute value.
+
+  That restriction is the point. Callers forward these outputs to chat and paging systems, where a rendered plan's `~ attr = value` lines - database passwords, connection strings - would outlive the run. The job summary sits behind the same auth as the log, so only it carries the plan verbatim.
+
+- **`notify-approval`**, a new action turning those outputs into a chat notice. An empty `webhook_url` skips delivery without failing, so a service that has not configured one is still able to deploy.
+
+  Announce it from the plan job. A job declaring `environment:` does not start until someone approves it, so an apply-job step could never announce its own gate.
 
 ### Fixed
 
-- A resource header is now judged by an explicit, end-anchored verb - `created`, `destroyed`, `updated in-place`, `must be replaced`. A looser match counted `will be read during apply`, which terraform excludes from its own add/change/destroy totals, and let an address such as `aws_instance.foo["will be destroyed"]` report a destructive plan.
+- **A resource header is judged by an explicit, end-anchored verb**: `created`, `destroyed`, `updated in-place`, `must be replaced`.
+
+  A looser match counted `will be read during apply`, which terraform excludes from its own add/change/destroy totals. It also let an address such as `aws_instance.foo["will be destroyed"]` report a destructive plan.
 
 ## [v3.2.0] - 2026-08-25
 
