@@ -105,16 +105,13 @@ test('a valid slack_group_id mentions the group once', () => {
   const p = build({ SLACK_GROUP_ID: 'S01ABC2DEF' });
   const firstSectionText = sections(p)[0].text.text;
   assert.ok(firstSectionText.endsWith('<!subteam^S01ABC2DEF>'), 'first section ends with the mention');
+  const occurrences = firstSectionText.split('<!subteam^S01ABC2DEF>').length - 1;
+  assert.strictEqual(occurrences, 1);
   assert.ok(!p.text.includes('subteam'), 'top-level text field does not contain subteam');
 });
 
 test('a malformed slack_group_id fails loudly', () => {
-  try {
-    build({ SLACK_GROUP_ID: '@dev-rain' });
-    assert.fail('expected an exception');
-  } catch (e) {
-    assert.ok(true, 'malformed ID threw as expected');
-  }
+  assert.throws(() => build({ SLACK_GROUP_ID: '@dev-rain' }), /Slack user-group ID/);
 });
 
 test('changelog markup cannot ping a channel', () => {

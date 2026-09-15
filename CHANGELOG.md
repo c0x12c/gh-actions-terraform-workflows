@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
   All three inputs default empty, and the posted message is byte-identical when none is passed.
 
+### Fixed
+
+- **Release-note lines are escaped before they reach the chat notice.** They carry pull request titles, which any contributor controls, so an unescaped title containing a channel or user-group reference could make an approval notice ping an audience its author chose. Ampersand, less-than and greater-than are now escaped on every line taken from the notes.
+
+- **`notify-approval`'s `github_token` input documents the Contents permission at write level.** The generate-notes endpoint rejects a read-only token, so a caller following the previous description would take a 403 and get a notice with the changelog silently absent.
+
 ## [v3.3.0] - 2026-09-11
 
 ### Added
