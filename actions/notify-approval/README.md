@@ -15,6 +15,9 @@ Pair it with [`terraform-plan`](../terraform-plan) and feed it that action's out
 | `plan_changes` | `plan_changes` output from `terraform-plan`. Headers, never attribute values. | `false` | `''` |
 | `plan_total` | `plan_total` output from `terraform-plan` | `false` | `0` |
 | `has_destroy` | `has_destroy` output from `terraform-plan` | `false` | `false` |
+| `slack_group_id` | Slack user-group ID to mention (e.g. `S01ABC2DEF`). Empty posts no mention. Must be the ID, not the display name. | `false` | `''` |
+| `github_token` | Token with `contents:read`, used to generate release notes shown in the notice. Empty skips the changelog section without failing. | `false` | `''` |
+| `changelog` | Pre-rendered changelog. Overrides generation from `github_token`; use when the caller already has the text or the ref is not a tag. | `false` | `''` |
 
 ## Usage
 

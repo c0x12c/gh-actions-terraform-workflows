@@ -7,6 +7,11 @@ if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
   exit 0
 fi
 
+# Gathered here rather than inside payload.py so the payload builder stays a pure shape function
+# with no network of its own.
+CHANGELOG=$(bash "$(dirname "$0")/changelog.sh" || true)
+export CHANGELOG
+
 payload=$(python3 "$(dirname "$0")/payload.py")
 
 # URL through --config on stdin rather than argv: a webhook is a credential - anyone holding it
