@@ -25,11 +25,19 @@ def _mention(group_id: str) -> str:
     return f"<!subteam^{group_id}>"
 
 
+def _escape_mrkdwn(text: str) -> str:
+    """Release-note lines carry PR titles, which any contributor controls. Slack parses
+    `<!channel>`, `<!subteam^ID>` and `<@U123>` out of message text, so an unescaped title can make
+    an approval notice ping an audience the author of the title chose. Slack's own escaping for
+    text content is these three, ampersand first."""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
 def _render_changelog(raw: str) -> str:
     """GitHub's generated notes are markdown; Slack mrkdwn has no headings and its own bullet."""
     lines = []
     for line in raw.split("\n"):
-        stripped = line.strip()
+        stripped = _escape_mrkdwn(line.strip())
         if not stripped or stripped.startswith("**Full Changelog**"):
             continue
         if stripped.startswith("#"):

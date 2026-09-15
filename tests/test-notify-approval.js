@@ -101,6 +101,34 @@ test('attribute values never reach the payload', () => {
   assert.ok(!/=\s*"/.test(codeBlock(p)), 'no attribute assignments in the body');
 });
 
+test('a valid slack_group_id mentions the group once', () => {
+  const p = build({ SLACK_GROUP_ID: 'S01ABC2DEF' });
+  const firstSectionText = sections(p)[0].text.text;
+  assert.ok(firstSectionText.endsWith('<!subteam^S01ABC2DEF>'), 'first section ends with the mention');
+  assert.ok(!p.text.includes('subteam'), 'top-level text field does not contain subteam');
+});
+
+test('a malformed slack_group_id fails loudly', () => {
+  try {
+    build({ SLACK_GROUP_ID: '@dev-rain' });
+    assert.fail('expected an exception');
+  } catch (e) {
+    assert.ok(true, 'malformed ID threw as expected');
+  }
+});
+
+test('changelog markup cannot ping a channel', () => {
+  const p = build({ CHANGELOG: '* <!channel> ship it by @someone in #1' });
+  const payload = JSON.stringify(p);
+  assert.ok(!payload.includes('<!channel>'), 'escaped markup not in payload');
+  assert.ok(payload.includes('&lt;!channel&gt;'), 'escaped form is in payload');
+});
+
+test('no changelog and no group id leaves the block count unchanged', () => {
+  const p = build();
+  assert.strictEqual(p.blocks.length, 5, 'baseline block count is 5');
+});
+
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
   process.exit(1);

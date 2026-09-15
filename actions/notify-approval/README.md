@@ -16,7 +16,7 @@ Pair it with [`terraform-plan`](../terraform-plan) and feed it that action's out
 | `plan_total` | `plan_total` output from `terraform-plan` | `false` | `0` |
 | `has_destroy` | `has_destroy` output from `terraform-plan` | `false` | `false` |
 | `slack_group_id` | Slack user-group ID to mention (e.g. `S01ABC2DEF`). Empty posts no mention. Must be the ID, not the display name. | `false` | `''` |
-| `github_token` | Token with `contents:read`, used to generate release notes shown in the notice. Empty skips the changelog section without failing. | `false` | `''` |
+| `github_token` | Token used to generate release notes shown in the notice. Needs Contents: write permission - the generate-notes endpoint rejects a read-only token and the changelog would be silently absent. Empty skips the changelog section without failing. | `false` | `''` |
 | `changelog` | Pre-rendered changelog. Overrides generation from `github_token`; use when the caller already has the text or the ref is not a tag. | `false` | `''` |
 
 ## Usage
