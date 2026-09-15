@@ -7,8 +7,45 @@ would outlive the run once they reach a channel.
 """
 import json
 import os
+import re
 
 BODY_BUDGET = 2400  # Slack caps a text object at 3000; leaves room for the fence and the tail line
+CHANGELOG_BUDGET = 1200  # a second fenced block; the same Slack 3000-char text cap applies
+
+
+def _mention(group_id: str) -> str:
+    """Slack resolves user groups by ID, not display name - an unknown ID renders as literal text
+    and pings nobody, so a malformed value is worth failing on rather than posting silently."""
+    if not group_id:
+        return ""
+    if not re.fullmatch(r"S[A-Z0-9]{2,}", group_id):
+        raise SystemExit(
+            f"slack_group_id must be a Slack user-group ID like S01ABC2DEF, got: {group_id}"
+        )
+    return f"<!subteam^{group_id}>"
+
+
+def _render_changelog(raw: str) -> str:
+    """GitHub's generated notes are markdown; Slack mrkdwn has no headings and its own bullet."""
+    lines = []
+    for line in raw.split("\n"):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("**Full Changelog**"):
+            continue
+        if stripped.startswith("#"):
+            lines.append(f"*{stripped.lstrip('#').strip()}*")
+        elif stripped.startswith(("* ", "- ")):
+            lines.append(f"- {stripped[2:]}")
+        else:
+            lines.append(stripped)
+    out, size = [], 0
+    for line in lines:
+        if size + len(line) > CHANGELOG_BUDGET:
+            out.append("... more in the release notes")
+            break
+        out.append(line)
+        size += len(line) + 1
+    return "\n".join(out)
 
 
 def main() -> None:
@@ -20,6 +57,8 @@ def main() -> None:
     changes = os.environ.get("PLAN_CHANGES") or ""
     total = int(os.environ.get("PLAN_TOTAL") or 0)
     has_destroy = os.environ.get("HAS_DESTROY") == "true"
+    group_id = os.environ.get("SLACK_GROUP_ID", "").strip()
+    changelog = os.environ.get("CHANGELOG", "").strip()
 
     rows = [line for line in changes.split("\n") if line.strip()]
 
@@ -47,16 +86,24 @@ def main() -> None:
             "THIS PLAN DESTROYS OR REPLACES RESOURCES*"
         )
 
+    mention = _mention(group_id)
+
     blocks = [
         {
             "type": "section",
             "text": {
                 "type": "mrkdwn",
-                "text": f"{headline}\n`{repo}` -> *{environment}* at `{ref_name}`",
+                "text": f"{headline}\n`{repo}` -> *{environment}* at `{ref_name}`"
+                + (f"\n{mention}" if mention else ""),
             },
         },
         {"type": "section", "text": {"type": "mrkdwn", "text": f"*{counts}*"}},
     ]
+    rendered_changelog = _render_changelog(changelog) if changelog else ""
+    if rendered_changelog:
+        blocks.append(
+            {"type": "section", "text": {"type": "mrkdwn", "text": rendered_changelog}}
+        )
     if body:
         blocks.append(
             {"type": "section", "text": {"type": "mrkdwn", "text": f"```\n{body}\n```"}}
