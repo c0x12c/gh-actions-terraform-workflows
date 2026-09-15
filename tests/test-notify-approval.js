@@ -114,11 +114,23 @@ test('a malformed slack_group_id fails loudly', () => {
   assert.throws(() => build({ SLACK_GROUP_ID: '@dev-rain' }), /Slack user-group ID/);
 });
 
-test('changelog markup cannot ping a channel', () => {
-  const p = build({ CHANGELOG: '* <!channel> ship it by @someone in #1' });
+test('changelog markup cannot ping anyone', () => {
+  const p = build({
+    CHANGELOG: '* <!channel> and <!subteam^S01ABC2DEF> and <@U012345> by @someone in #1\n'
+      + '* already escaped &lt;!channel&gt; stays inert',
+  });
   const payload = JSON.stringify(p);
-  assert.ok(!payload.includes('<!channel>'), 'escaped markup not in payload');
-  assert.ok(payload.includes('&lt;!channel&gt;'), 'escaped form is in payload');
+  // Slack parses these out of message text, so a contributor-controlled PR title could otherwise
+  // choose who an approval notice pings.
+  for (const raw of ['<!channel>', '<!subteam^S01ABC2DEF>', '<@U012345>']) {
+    assert.ok(!payload.includes(raw), `${raw} must not survive into the payload`);
+  }
+  assert.ok(payload.includes('&lt;!channel&gt;'), 'channel mention is escaped');
+  assert.ok(payload.includes('&lt;!subteam^S01ABC2DEF&gt;'), 'subteam mention is escaped');
+  assert.ok(payload.includes('&lt;@U012345&gt;'), 'user mention is escaped');
+  // Ampersand must be escaped before the angle brackets, or an already-escaped value would be
+  // rendered back into a live mention.
+  assert.ok(payload.includes('&amp;lt;!channel&amp;gt;'), 'ampersand is escaped first');
 });
 
 test('no changelog and no group id leaves the block count unchanged', () => {
