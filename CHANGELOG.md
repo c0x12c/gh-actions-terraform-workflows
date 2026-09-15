@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [v3.4.0] - 2026-09-15
+
+### Added
+
+- **`notify-approval` carries the release changelog.** The notice said how many resources move, not what ships, so an approver left the channel and opened the compare view to find out.
+
+  Set `github_token` and the action renders the same `What's Changed` list GitHub produces for the tag. Generating it here rather than in each caller means consumers do not reimplement the same commit walk slightly differently. `changelog` accepts pre-rendered text instead, for a caller whose ref is not a tag.
+
+  Every failure path - no token, not a tag, an API error - emits nothing and does not fail the step. The notice is what gates the deploy, so it has to survive a missing changelog.
+
+- **`notify-approval` gains an optional `slack_group_id`**, mentioning a team once on the headline so a waiting approval pages someone.
+
+  It must be the user-group ID, not the display name. Slack resolves these by ID and renders an unknown one as literal text that pings nobody, with nothing erroring - so a value that is not an `S...` ID is rejected rather than posted.
+
+  The mention is deliberately absent from the notification fallback text, where a raw subteam reference renders literally on some surfaces.
+
+  All three inputs default empty, and the posted message is byte-identical when none is passed.
+
+### Fixed
+
+- **Release-note lines are escaped before they reach the chat notice.** They carry pull request titles, which any contributor controls, so an unescaped title containing a channel or user-group reference could make an approval notice ping an audience its author chose. Ampersand, less-than and greater-than are now escaped on every line taken from the notes.
+
+- **`notify-approval`'s `github_token` input documents the Contents permission at write level.** The generate-notes endpoint rejects a read-only token, so a caller following the previous description would take a 403 and get a notice with the changelog silently absent.
+
 ## [v3.3.0] - 2026-09-11
 
 ### Added

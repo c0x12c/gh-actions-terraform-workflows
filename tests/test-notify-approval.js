@@ -101,6 +101,43 @@ test('attribute values never reach the payload', () => {
   assert.ok(!/=\s*"/.test(codeBlock(p)), 'no attribute assignments in the body');
 });
 
+test('a valid slack_group_id mentions the group once', () => {
+  const p = build({ SLACK_GROUP_ID: 'S01ABC2DEF' });
+  const firstSectionText = sections(p)[0].text.text;
+  assert.ok(firstSectionText.endsWith('<!subteam^S01ABC2DEF>'), 'first section ends with the mention');
+  const occurrences = firstSectionText.split('<!subteam^S01ABC2DEF>').length - 1;
+  assert.strictEqual(occurrences, 1);
+  assert.ok(!p.text.includes('subteam'), 'top-level text field does not contain subteam');
+});
+
+test('a malformed slack_group_id fails loudly', () => {
+  assert.throws(() => build({ SLACK_GROUP_ID: '@dev-rain' }), /Slack user-group ID/);
+});
+
+test('changelog markup cannot ping anyone', () => {
+  const p = build({
+    CHANGELOG: '* <!channel> and <!subteam^S01ABC2DEF> and <@U012345> by @someone in #1\n'
+      + '* already escaped &lt;!channel&gt; stays inert',
+  });
+  const payload = JSON.stringify(p);
+  // Slack parses these out of message text, so a contributor-controlled PR title could otherwise
+  // choose who an approval notice pings.
+  for (const raw of ['<!channel>', '<!subteam^S01ABC2DEF>', '<@U012345>']) {
+    assert.ok(!payload.includes(raw), `${raw} must not survive into the payload`);
+  }
+  assert.ok(payload.includes('&lt;!channel&gt;'), 'channel mention is escaped');
+  assert.ok(payload.includes('&lt;!subteam^S01ABC2DEF&gt;'), 'subteam mention is escaped');
+  assert.ok(payload.includes('&lt;@U012345&gt;'), 'user mention is escaped');
+  // Ampersand must be escaped before the angle brackets, or an already-escaped value would be
+  // rendered back into a live mention.
+  assert.ok(payload.includes('&amp;lt;!channel&amp;gt;'), 'ampersand is escaped first');
+});
+
+test('no changelog and no group id leaves the block count unchanged', () => {
+  const p = build();
+  assert.strictEqual(p.blocks.length, 5, 'baseline block count is 5');
+});
+
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
   process.exit(1);

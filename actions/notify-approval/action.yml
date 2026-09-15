@@ -39,8 +39,9 @@ inputs:
     default: ""
   github_token:
     description: >-
-      Token with contents:read, used to generate the release notes shown in the notice. Empty skips
-      the changelog section without failing.
+      Token used to generate the release notes shown in the notice. Needs the Contents permission at
+      write level - the generate-notes endpoint rejects a read-only token, and the changelog would
+      then be silently absent. Empty skips the changelog without failing.
     required: false
     default: ""
   changelog:
