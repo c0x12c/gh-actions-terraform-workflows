@@ -1,0 +1,357 @@
+name: "~Reusable: Terraform Apply with Approval"
+
+# Plan -> approval issue -> apply, for repos that cannot gate with a GitHub Environment:
+# required reviewers on a private repo need GitHub Enterprise, and on Team the API rejects the
+# rule after creating the environment, which leaves one that gates nothing.
+#
+# The gate is advisory. It lives in the caller's workflow file, so a tag whose own workflow
+# drops this call applies unreviewed. An Environment rule is enforced outside the ref.
+#
+# Left to the caller, because a called workflow cannot own them:
+# - the trigger and `concurrency` (key it on the Terraform state, cancel-in-progress: false);
+# - `permissions`: contents: read, id-token: write, issues: read. Jobs here only narrow them;
+# - reporting a run cancelled while queued, which never starts a job in here (workflow_run).
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: "Terraform environment name (e.g. prod). Used in titles and notifications."
+        required: true
+        type: string
+      working_dir:
+        description: "Directory holding the Terraform root to plan and apply."
+        required: true
+        type: string
+      aws_region:
+        description: "AWS region for the assumed role."
+        required: true
+        type: string
+      approver_teams:
+        description: >-
+          Comma-separated org team slugs, no @ and no org prefix. Any one member's approval
+          releases the apply.
+        required: true
+        type: string
+      app_id:
+        description: >-
+          GitHub App ID. The app needs org Members: read (to expand the teams) and repo
+          Issues: read & write (to open and close the approval issue).
+        required: true
+        type: string
+      runs_on:
+        description: >-
+          Runner for the plan and apply jobs - a self-hosted label when Terraform needs VPC
+          access. The approval job always runs on ubuntu-latest.
+        required: false
+        type: string
+        default: "ubuntu-latest"
+      terraform_version:
+        description: "Terraform version to use."
+        required: false
+        type: string
+        default: "1.8.4"
+      refresh:
+        description: "Whether to refresh state before planning and applying (true/false)."
+        required: false
+        type: string
+        default: "true"
+      secret_filter:
+        description: >-
+          git-secret-protector filter to decrypt with. Empty skips decryption, which a runner
+          without a Docker daemon needs - the decrypt action is a Docker action.
+        required: false
+        type: string
+        default: ""
+      approval_timeout_minutes:
+        description: "How long the approval issue waits. At most 55, under the app token's 60-minute life."
+        required: false
+        type: number
+        default: 45
+    secrets:
+      aws_role:
+        description: "AWS role ARN to assume via OIDC for plan and apply."
+        required: true
+      gh_app_private_key:
+        description: "Private key of the GitHub App named by app_id."
+        required: true
+      slack_webhook_url:
+        description: "Slack webhook for notifications. Unset skips every notification."
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Ungated on purpose: pausing before the plan would give the approver nothing to read.
+  terraform_plan:
+    name: Terraform Plan
+    runs-on: ${{ inputs.runs_on }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.slack_webhook_url }}
+    outputs:
+      # Anything but an explicit "No changes." goes to the gate, so an unparsed plan is
+      # reviewed rather than skipped.
+      has_changes: ${{ steps.plan.outputs.plan_counts != 'No changes.' }}
+      plan_counts: ${{ steps.plan.outputs.plan_counts }}
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+
+      # Writes the full plan to the job summary, which is where the approver reads it.
+      - name: Terraform Plan
+        id: plan
+        uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-plan@v3.4.0
+        with:
+          aws_region: ${{ inputs.aws_region }}
+          aws_role: ${{ secrets.aws_role }}
+          environment: ${{ inputs.environment }}
+          github_token: ${{ github.token }}
+          secret_filter: ${{ inputs.secret_filter }}
+          terraform_version: ${{ inputs.terraform_version }}
+          working_dir: ${{ inputs.working_dir }}
+          refresh: ${{ inputs.refresh }}
+
+      # Notify on no-op tags too, so silence on a release tag means something went wrong.
+      - name: Send Notification to Slack on no changes
+        uses: c0x12c/gh-actions-slack-notify@v0.1.2
+        if: steps.plan.outputs.plan_counts == 'No changes.' && env.SLACK_WEBHOOK_URL != ''
+        with:
+          webhook_url: ${{ env.SLACK_WEBHOOK_URL }}
+          title: 'ℹ️ *${{ github.event.repository.name }} - Terraform Apply skipped in ${{ inputs.environment }} (${{ github.ref_name }})* - plan reported no infrastructure changes'
+          project_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      # A plan failure skips the downstream jobs rather than failing them, so their
+      # failure() steps never fire. Without this, init/plan/credential failures are silent.
+      - name: Send Notification to Slack on failure
+        uses: c0x12c/gh-actions-slack-notify@v0.1.2
+        if: failure() && env.SLACK_WEBHOOK_URL != ''
+        with:
+          webhook_url: ${{ env.SLACK_WEBHOOK_URL }}
+          title: '❌ *${{ github.event.repository.name }} - Terraform Plan FAILED in ${{ inputs.environment }} (${{ github.ref_name }})*'
+          project_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  # Runs beside the gate rather than inside it: manual-approval opens the issue from within the same
+  # step that blocks, so the issue URL does not exist until the waiting has already started.
+  notify_pending_approval:
+    name: Notify Pending Approval
+    runs-on: ubuntu-latest
+    needs: terraform_plan
+    if: needs.terraform_plan.outputs.has_changes == 'true'
+    permissions:
+      contents: read
+      issues: read
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.slack_webhook_url }}
+
+    steps:
+      # The notify action reads the commit log out of the working tree.
+      - name: Checkout source
+        if: env.SLACK_WEBHOOK_URL != ''
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 3
+
+      # The gate mints a token, verifies its teams and builds a container action before it opens
+      # the issue, so the first polls are expected to miss.
+      - name: Wait for the approval issue
+        id: find_issue
+        if: env.SLACK_WEBHOOK_URL != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          # Must match issue-title in the approval job.
+          TITLE: "Approve ${{ inputs.environment }} terraform apply - ${{ github.ref_name }}"
+        run: |
+          deadline=$(( SECONDS + 300 ))
+          url=""
+
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            # /issues lists pull requests too, and a re-run of the same tag can leave an older
+            # issue behind, so filter the PRs out and take the newest match.
+            url=$(gh api "repos/$REPO/issues?state=open&per_page=100" \
+              --jq '[.[] | select(.pull_request == null) | select(.title == env.TITLE)]
+                    | sort_by(.number) | last | .html_url // empty') || url=""
+            if [ -n "$url" ]; then break; fi
+            sleep 5
+          done
+
+          if [ -z "$url" ]; then
+            # A gate that never opened is reported by the approval job itself. Ping regardless -
+            # a missing link is better than a silent wait - and the action drops the button.
+            echo "::warning::No approval issue found after 5m; notifying without the issue link."
+          fi
+
+          # Built by jq rather than inlined into the action's `with`, so the URL is quoted as JSON
+          # rather than pasted into a JSON string. An empty one yields [], and no button.
+          buttons=$(jq -cn --arg url "$url" \
+            'if $url == "" then [] else [{ text: "View Issue", url: $url }] end')
+          echo "buttons=$buttons" >> "$GITHUB_OUTPUT"
+
+      # Counts only - a rendered plan is not secret-masked and Slack is searchable and retained.
+      - name: Send Notification to Slack on pending approval
+        if: env.SLACK_WEBHOOK_URL != ''
+        uses: c0x12c/gh-actions-slack-notify@v0.5.0
+        with:
+          webhook_url: ${{ env.SLACK_WEBHOOK_URL }}
+          title: '⏸️ *${{ github.event.repository.name }} - Terraform Apply awaiting approval in ${{ inputs.environment }} (${{ github.ref_name }})*'
+          message: ${{ needs.terraform_plan.outputs.plan_counts }}
+          buttons: ${{ steps.find_issue.outputs.buttons }}
+
+  approval:
+    name: Await Approval
+    # Hosted, not inputs.runs_on: manual-approval is a Docker container action and ARC scale sets
+    # run without a Docker daemon. Nothing in this job needs AWS or VPC access.
+    runs-on: ubuntu-latest
+    needs: terraform_plan
+    if: needs.terraform_plan.outputs.has_changes == 'true'
+    # The container action must not reach the OIDC endpoint: a deploy role trusting the repo
+    # would hand it a write session from the gate itself.
+    permissions: {}
+    env:
+      SLACK_WEBHOOK_URL: ${{ secrets.slack_webhook_url }}
+
+    steps:
+      # An approval landing after the app token expires fails the poll on a 401, which is
+      # indistinguishable from a denial.
+      - name: Check approval timeout
+        shell: bash
+        env:
+          TIMEOUT: ${{ inputs.approval_timeout_minutes }}
+        run: |
+          if [ "$TIMEOUT" -gt 55 ] || [ "$TIMEOUT" -lt 1 ]; then
+            echo "::error::approval_timeout_minutes must be 1-55 (got $TIMEOUT); the app token lives 60 minutes."
+            exit 1
+          fi
+
+      # Org teams as approvers need a token that can list team members, which the Actions token
+      # cannot do.
+      - name: Mint approval token
+        id: approval_token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ inputs.app_id }}
+          private-key: ${{ secrets.gh_app_private_key }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      # manual-approval falls back to reading a slug it cannot expand as a literal username,
+      # which yields an issue nobody can approve and a run that only fails once the window is up.
+      # An empty member list - including one caused by a missing scope - fails rather than opens.
+      - name: Verify approver teams resolve
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.approval_token.outputs.token }}
+          ORG: ${{ github.repository_owner }}
+          TEAMS: ${{ inputs.approver_teams }}
+        run: |
+          failed=0
+          IFS=',' read -ra slugs <<< "$TEAMS"
+          for slug in "${slugs[@]}"; do
+            slug=$(echo "$slug" | xargs)
+            count=$(gh api "orgs/$ORG/teams/$slug/members" --jq 'length' 2>/dev/null) || count=""
+            if [ -z "$count" ] || [ "$count" -eq 0 ]; then
+              echo "::error::Approver team '$slug' resolved to no members - check the slug and the app's org Members:read grant."
+              failed=1
+            else
+              echo "$slug: $count member(s)"
+            fi
+          done
+          exit "$failed"
+
+      - name: Await manual approval
+        id: approval
+        uses: trstringer/manual-approval@v1.13.1
+        timeout-minutes: ${{ inputs.approval_timeout_minutes }}
+        with:
+          secret: ${{ steps.approval_token.outputs.token }}
+          approvers: ${{ inputs.approver_teams }}
+          minimum-approvals: 1
+          # Excludes github.actor. When a GitHub App pushes the tag, the App is the actor and the
+          # releasing engineer can still approve.
+          exclude-workflow-initiator-as-approver: true
+          # Must match TITLE in notify_pending_approval.
+          issue-title: "Approve ${{ inputs.environment }} terraform apply - ${{ github.ref_name }}"
+          issue-body: |
+            `${{ github.ref_name }}` is waiting to apply to ${{ inputs.environment }}.
+
+            Read the plan in the job summary before approving:
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+            Approve with a comment that is exactly one of: approved, approve, lgtm, yes.
+            Deny with exactly one of: denied, deny, no. Case does not matter; anything else,
+            including a sentence around the word, is ignored.
+            Unanswered for ${{ inputs.approval_timeout_minutes }} minutes, the run fails and the tag must be re-run.
+
+      # The action traps SIGINT only, so a timeout or cancellation (SIGTERM) leaves the issue
+      # open and the next tag opens a second one. Idempotent - a denial already closed it.
+      - name: Close approval issue
+        if: always() && steps.approval.conclusion != 'success' && steps.approval.outputs.issue-number != ''
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.approval_token.outputs.token }}
+        run: |
+          gh api -X PATCH --silent \
+            "repos/${{ github.repository }}/issues/${{ steps.approval.outputs.issue-number }}" \
+            -f state=closed
+
+      # Reported apart from an apply failure: nothing ran, so "FAILED" would send someone
+      # hunting for damage.
+      - name: Send Notification to Slack on approval not granted
+        uses: c0x12c/gh-actions-slack-notify@v0.1.2
+        if: failure() && steps.approval.conclusion == 'failure' && env.SLACK_WEBHOOK_URL != ''
+        with:
+          webhook_url: ${{ env.SLACK_WEBHOOK_URL }}
+          title: '⛔ *${{ github.event.repository.name }} - Terraform Apply NOT APPROVED in ${{ inputs.environment }} (${{ github.ref_name }})* - denied or expired, nothing applied'
+          project_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      # Bad timeout, token mint or an unresolvable team: the gate never opened, which is a broken
+      # gate rather than a refused apply.
+      - name: Send Notification to Slack on gate failure
+        uses: c0x12c/gh-actions-slack-notify@v0.1.2
+        if: failure() && steps.approval.conclusion != 'failure' && env.SLACK_WEBHOOK_URL != ''
+        with:
+          webhook_url: ${{ env.SLACK_WEBHOOK_URL }}
+          title: '❌ *${{ github.event.repository.name }} - Terraform Apply approval gate FAILED in ${{ inputs.environment }} (${{ github.ref_name }})* - nothing applied'
+          project_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+  terraform_apply:
+    name: Terraform Apply
+    runs-on: ${{ inputs.runs_on }}
+    needs: [terraform_plan, approval]
+    if: needs.terraform_plan.outputs.has_changes == 'true'
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      # Same SHA the plan job rendered. Depth 3 so the apply action's Slack notice can list the
+      # commits being applied.
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 3
+
+      # Re-plans and applies from the same SHA and refresh setting as the plan the approver read.
+      # No plan file crosses the gate: an artifact is downloadable by every repo reader, and a
+      # binary plan carries its secrets in the clear. Sends its own success/failure notices.
+      - name: Terraform Apply
+        uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-apply@v3.4.0
+        with:
+          aws_region: ${{ inputs.aws_region }}
+          aws_role: ${{ secrets.aws_role }}
+          environment: ${{ inputs.environment }}
+          secret_filter: ${{ inputs.secret_filter }}
+          slack_webhook_url: ${{ secrets.slack_webhook_url }}
+          terraform_version: ${{ inputs.terraform_version }}
+          working_dir: ${{ inputs.working_dir }}
+          refresh: ${{ inputs.refresh }}

@@ -30,3 +30,4 @@ jobs:
           node tests/test-plan-gate.js
           node tests/test-apply-error-extract.js
           node tests/test-changelog-release.js
+          node tests/test-apply-approval-workflow.js
