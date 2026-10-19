@@ -64,10 +64,31 @@ function test(name, fn) {
 
 console.log('Running apply-approval workflow tests...\n');
 
-test('the notifier polls for the exact title the gate opens', () => {
+test('the notifier and the close step look for the exact title the gate opens', () => {
   const title = job('approval').match(/issue-title: "(.+)"/)[1];
-  const polled = job('notify_pending_approval').match(/TITLE: "(.+)"/)[1];
-  assert.strictEqual(polled, title);
+  assert.match(title, /github\.run_id.*github\.run_attempt/, 'an older attempt\'s issue must not match');
+  assert.strictEqual(job('notify_pending_approval').match(/TITLE: "(.+)"/)[1], title);
+  assert.strictEqual(job('approval').match(/TITLE: "(.+)"/)[1], title);
+});
+
+test('a "No changes." plan, as terraform prints it, skips the gate', () => {
+  const plan = job('terraform_plan');
+  assert.match(plan, /has_changes: \$\{\{ !startsWith\(steps\.plan\.outputs\.plan_counts, 'No changes\.'\) \}\}/);
+  assert.doesNotMatch(plan, /plan_counts [!=]= 'No changes\.'/);
+});
+
+test('apply refuses a re-plan that differs from the approved one', () => {
+  const apply = job('terraform_apply');
+  assert.match(apply, /APPROVED: \$\{\{ needs\.terraform_plan\.outputs\.plan_counts \}\}/);
+  assert.match(apply, /CURRENT: \$\{\{ steps\.replan\.outputs\.plan_counts \}\}/);
+  assert.ok(apply.indexOf('id: replan') < apply.indexOf('id: apply'), 're-plan must run before apply');
+  const check = runBlock('Check the plan matches the approved one');
+  const approved = 'Plan: 1 to add, 0 to change, 0 to destroy.';
+  assert.strictEqual(runWithFakeGh(check, 'exit 0', { APPROVED: approved, CURRENT: approved }).code, 0);
+  const r = runWithFakeGh(check, 'exit 0',
+    { APPROVED: approved, CURRENT: 'Plan: 1 to add, 0 to change, 1 to destroy.' });
+  assert.strictEqual(r.code, 1);
+  assert.match(r.out, /plan changed since approval/);
 });
 
 test('the gate cannot mint an OIDC token and runs on a Docker-capable runner', () => {
@@ -90,20 +111,38 @@ test('plan and apply check out the run SHA', () => {
 });
 
 const preflight = runBlock('Verify approver teams resolve');
-const teamsEnv = { ORG: 'acme', TEAMS: 'sre, leads' };
+const teamsEnv = { ORG: 'acme', TEAMS: 'sre, leads', ACTOR: 'release-bot[bot]' };
 
 test('preflight passes when every team has members', () => {
-  const r = runWithFakeGh(preflight, 'echo 3', teamsEnv);
+  const r = runWithFakeGh(preflight, 'printf "alice\\nbob\\ncarol\\n"', teamsEnv);
   assert.strictEqual(r.code, 0, r.out);
   assert.match(r.out, /sre: 3 member/);
   assert.match(r.out, /leads: 3 member/);
 });
 
+test('preflight paginates, so a team past 30 members is counted in full', () => {
+  const r = runWithFakeGh(preflight,
+    '[[ " $* " == *" --paginate "* ]] && seq -f "user%g" 45 || seq -f "user%g" 30', teamsEnv);
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /sre: 45 member/);
+});
+
 test('preflight fails on a team with no members, naming it', () => {
-  const r = runWithFakeGh(preflight, 'case "$2" in *leads*) echo 0 ;; *) echo 2 ;; esac', teamsEnv);
+  const r = runWithFakeGh(preflight, 'case "$*" in *leads*) ;; *) echo alice ;; esac', teamsEnv);
   assert.strictEqual(r.code, 1);
   assert.match(r.out, /'leads' resolved to no members/);
   assert.doesNotMatch(r.out, /'sre' resolved/);
+});
+
+test('preflight fails when the only approver is the initiator the action excludes', () => {
+  const r = runWithFakeGh(preflight, 'echo Alice', { ...teamsEnv, ACTOR: 'alice' });
+  assert.strictEqual(r.code, 1, r.out);
+  assert.match(r.out, /No approver left once the initiator 'alice' is excluded/);
+});
+
+test('preflight passes when someone besides the initiator can approve', () => {
+  const r = runWithFakeGh(preflight, 'printf "alice\\nbob\\n"', { ...teamsEnv, ACTOR: 'alice' });
+  assert.strictEqual(r.code, 0, r.out);
 });
 
 test('preflight fails when the API errors, rather than opening the gate', () => {
@@ -113,12 +152,41 @@ test('preflight fails when the API errors, rather than opening the gate', () => 
 });
 
 const timeoutCheck = runBlock('Check approval timeout');
-for (const [value, ok] of [['45', true], ['55', true], ['56', false], ['0', false]]) {
-  test(`timeout ${value} is ${ok ? 'accepted' : 'rejected'}`, () => {
+for (const [value, ok] of [
+  ['45', true], ['55', true], ['56', false], ['0', false], ['60.5', false], ['30.5', false], ['', false],
+]) {
+  test(`timeout '${value}' is ${ok ? 'accepted' : 'rejected'}`, () => {
     const r = runWithFakeGh(timeoutCheck, 'exit 0', { TIMEOUT: value });
     assert.strictEqual(r.code === 0, ok, r.out);
   });
 }
+
+const closeIssue = runBlock('Close approval issue');
+const closeEnv = { REPO: 'acme/infra', TITLE: 'Approve prod terraform apply - v1 (run 9-1)' };
+// Logs each call, and answers the issue search with #42.
+const closeGh = 'echo "$*" >> "$GH_LOG"; [[ "$*" == *"--jq"* ]] && echo 42; exit 0';
+
+test('close falls back to the title when the killed step left no issue-number', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'close-')), 'log');
+  const r = runWithFakeGh(closeIssue, closeGh, { ...closeEnv, ISSUE_NUMBER: '', GH_LOG: log });
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(fs.readFileSync(log, 'utf8'), /-X PATCH --silent repos\/acme\/infra\/issues\/42 -f state=closed/);
+});
+
+test('close uses issue-number directly when present', () => {
+  const log = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'close-')), 'log');
+  const r = runWithFakeGh(closeIssue, closeGh, { ...closeEnv, ISSUE_NUMBER: '7', GH_LOG: log });
+  assert.strictEqual(r.code, 0, r.out);
+  const calls = fs.readFileSync(log, 'utf8');
+  assert.doesNotMatch(calls, /--jq/);
+  assert.match(calls, /issues\/7 -f state=closed/);
+});
+
+test('close is a no-op when no open issue matches', () => {
+  const r = runWithFakeGh(closeIssue, 'exit 0', { ...closeEnv, ISSUE_NUMBER: '' });
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /No open approval issue to close/);
+});
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

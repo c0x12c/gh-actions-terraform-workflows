@@ -112,5 +112,7 @@ workflow.
 **Limits:**
 - **Advisory.** A tag whose workflow drops the call applies unreviewed.
 - **Self-approval.** `exclude-workflow-initiator-as-approver` excludes `github.actor`. When an App
-  pushes the tag, the releaser can approve their own apply.
-- **Apply re-plans.** No plan file crosses the gate, so drift during the wait is applied unseen.
+  pushes the tag, the releaser can approve their own apply, so this is not four-eyes review.
+- **Apply re-plans.** No plan file crosses the gate. The apply job re-plans and refuses to apply
+  when the summary line (`Plan: N to add, ...`) differs from the approved one. Drift that keeps
+  the same counts still gets through.

@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
   The gate opens an issue with `trstringer/manual-approval` and waits for a member of `approver_teams`. It checks each team resolves to members first, because the action reads an unknown slug as a username and would wait out the window for nobody. It runs on `ubuntu-latest` with no permissions, so the container action cannot mint an OIDC token. It closes its issue on timeout or cancel, which the action does not do. A separate job sends the Slack ping with a link to the issue.
 
-  Plan and apply use `terraform-plan` and `terraform-apply` at v3.4.0. `runs_on` puts them on a self-hosted runner. Leave `secret_filter` empty on a runner without Docker, since the decrypt action is a Docker action.
+  Plan and apply use `terraform-plan` and `terraform-apply` at v3.4.0. The apply job re-plans and stops if the summary line differs from the approved one, so drift during the wait is not applied unseen. `runs_on` puts them on a self-hosted runner. Leave `secret_filter` empty on a runner without Docker, since the decrypt action is a Docker action.
 
   The trigger, `concurrency` and the cancelled-run notice stay in the caller, because a called workflow cannot own them. The gate is advisory: a tag whose workflow drops the call applies unreviewed.
 
