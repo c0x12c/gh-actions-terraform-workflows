@@ -15,6 +15,9 @@ This repository provides reusable composite GitHub Actions for managing Terrafor
 - `actions/terraform-apply-gcp/` - Terraform apply action for GCP environments
 - `actions/eks-scale-down/` - EKS cluster scaling action
 
+**Reusable Workflows:**
+- `.github/workflows/terraform-apply-approval.yml` - plan -> approval issue -> apply, for repos that cannot gate with a GitHub Environment. Calls the composite actions at a pinned tag, not `./actions/...`, which would resolve in the caller's workspace
+
 **Release Management:**
 - `tools/semtag` - Semantic versioning tool for automated releases
 - `tools/create_release.sh` - Script for creating releases with proper version tagging

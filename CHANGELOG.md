@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Reusable workflow `terraform-apply-approval.yml`: plan, an approval issue, then apply.** Environment required reviewers on a private repo need GitHub Enterprise. On Team, the API rejects the rule after creating the environment, so the repo is left with one that gates nothing.
+
+  Each repo used to scaffold its own copy of the gate. Now it calls this workflow with a short caller file, and a fix here reaches every caller on its next version bump.
+
+  The gate opens an issue with `trstringer/manual-approval` and waits for a member of `approver_teams`. It checks each team resolves to members first, because the action reads an unknown slug as a username and would wait out the window for nobody. It runs on `ubuntu-latest` with no permissions, so the container action cannot mint an OIDC token. It closes its issue on timeout or cancel, which the action does not do. A separate job sends the Slack ping with a link to the issue.
+
+  Plan and apply use `terraform-plan` and `terraform-apply` at v3.4.0. The apply job re-plans and stops if the summary line differs from the approved one, so drift during the wait is not applied unseen. `runs_on` puts them on a self-hosted runner. Leave `secret_filter` empty on a runner without Docker, since the decrypt action is a Docker action.
+
+  The trigger, `concurrency` and the cancelled-run notice stay in the caller, because a called workflow cannot own them. The gate is advisory: a tag whose workflow drops the call applies unreviewed.
+
 ## [v3.4.0] - 2026-09-15
 
 ### Added
