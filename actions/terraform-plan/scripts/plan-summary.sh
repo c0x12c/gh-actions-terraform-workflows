@@ -11,11 +11,16 @@
 # connection strings - would outlive the run and reach a wider audience than repo auth allows.
 # The job summary is behind the same auth as the log, so it carries the full rendered plan.
 #
-# Reads: RUNNER_TEMP, GITHUB_OUTPUT, GITHUB_STEP_SUMMARY, PLAN_MAX_ROWS.
+# Reads: RUNNER_TEMP, GITHUB_OUTPUT, GITHUB_STEP_SUMMARY, PLAN_MAX_ROWS,
+# PLAN_SUMMARY_MAX_BYTES.
 set -euo pipefail
 
 PLAN_OUT="${RUNNER_TEMP:-/tmp}/plan.out"
 MAX_ROWS="${PLAN_MAX_ROWS:-20}"
+# GitHub rejects a step summary over 1 MiB and the upload fails WITHOUT failing the job, so an
+# approver would be sent to an empty summary. The default leaves headroom under 1048576 for the
+# heading, fences and notice.
+SUMMARY_MAX_BYTES="${PLAN_SUMMARY_MAX_BYTES:-900000}"
 
 emit() { printf '%s\n' "$1" >> "${GITHUB_OUTPUT:-/dev/null}"; }
 
@@ -67,12 +72,29 @@ fi
 emit "${delim}"
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  total_bytes=$(wc -c < "$PLAN_OUT" | tr -d ' ')
+  shown_file="$PLAN_OUT"
+  truncated=false
+  if [ "$total_bytes" -gt "$SUMMARY_MAX_BYTES" ]; then
+    truncated=true
+    shown_file="${PLAN_OUT}.shown"
+    # Whole lines only, counted in bytes (C locale): a byte cut could split a UTF-8 character or
+    # leave half a line that reads as a different plan. Outputs above were computed from the full
+    # file, so the cut affects the rendering alone.
+    LC_ALL=C awk -v max="$SUMMARY_MAX_BYTES" '{ b += length($0) + 1; if (b > max) exit; print }' \
+      "$PLAN_OUT" > "$shown_file"
+    shown_bytes=$(wc -c < "$shown_file" | tr -d ' ')
+  fi
   {
     if [ "$has_destroy" = true ]; then
-      echo "### Terraform plan - DESTROYS OR REPLACES RESOURCES"
+      title="### Terraform plan - DESTROYS OR REPLACES RESOURCES"
     else
-      echo "### Terraform plan"
+      title="### Terraform plan"
     fi
+    if [ "$truncated" = true ]; then
+      title="${title} (truncated)"
+    fi
+    echo "$title"
     echo
     echo "**${counts:-unknown}**"
     echo
@@ -80,11 +102,15 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo
     # Fence one backtick longer than the longest run the plan itself contains. A terraform string
     # or heredoc holding ``` would otherwise close the block and hide the rest of the "full" plan.
-    longest=$(grep -oE '^`+' "$PLAN_OUT" | awk '{ if (length($0) > n) n = length($0) } END { print n+0 }' || true)
+    longest=$(grep -oE '^`+' "$shown_file" | awk '{ if (length($0) > n) n = length($0) } END { print n+0 }' || true)
     fence=$(printf '`%.0s' $(seq 1 $(( longest > 2 ? longest + 1 : 3 ))))
     echo "${fence}terraform"
-    cat "$PLAN_OUT"
+    cat "$shown_file"
     echo "${fence}"
+    if [ "$truncated" = true ]; then
+      echo
+      echo "**Plan truncated:** showing ${shown_bytes} of ${total_bytes} bytes, because GitHub rejects a job summary over 1 MiB. The full plan is in this job's log."
+    fi
     echo
     echo '</details>'
   } >> "$GITHUB_STEP_SUMMARY"

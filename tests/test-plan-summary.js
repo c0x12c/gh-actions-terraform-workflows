@@ -209,6 +209,45 @@ test('flags destruction in the job summary heading', () => {
   assert.ok(/DESTROYS OR REPLACES/.test(summary), 'heading must flag it');
 });
 
+test('a small plan summary is byte-identical to the uncapped rendering', () => {
+  const { summary } = run(UPDATE_ONLY);
+  const expected = '### Terraform plan\n\n**Plan: 0 to add, 2 to change, 0 to destroy.**\n\n'
+    + '<details><summary>Full plan</summary>\n\n```terraform\n' + UPDATE_ONLY + '```\n\n</details>\n';
+  assert.strictEqual(summary, expected);
+});
+
+test('a plan over the cap is cut at a whole line, noted, and stays under 1 MiB', () => {
+  // Multibyte characters in every filler line, so a byte cut mid-character would show as U+FFFD.
+  const filler = '      ~ description = "café ✓ ' + 'x'.repeat(80) + '"\n';
+  const head = '  # module.a.aws_s3_bucket.this will be updated in-place\n';
+  const tail = '  # module.z.aws_instance.old will be destroyed\n\nPlan: 0 to add, 1 to change, 1 to destroy.\n';
+  const plan = head + filler.repeat(Math.ceil(1.5 * 1024 * 1024 / Buffer.byteLength(filler))) + tail;
+  assert.ok(Buffer.byteLength(plan) > 1.4 * 1024 * 1024);
+  const { out, summary } = run(plan);
+  assert.ok(Buffer.byteLength(summary) < 1048576, 'summary must fit the 1 MiB step-summary limit');
+  assert.ok(summary.includes('truncated'), 'heading or notice must say so');
+  assert.ok(summary.includes("this job's log"), 'notice must point at the job log');
+  assert.ok(summary.includes(String(Buffer.byteLength(plan))), 'notice must name the total bytes');
+  assert.ok(!summary.includes('�'), 'no partial UTF-8 character');
+  const m = summary.match(/^(`{3,})terraform\n([\s\S]*?)\n\1\n/m);
+  assert.ok(m, 'the fenced block is closed');
+  assert.ok(m[2].split('\n').every(l => l === '' || l === head.trimEnd() || l === filler.trimEnd()),
+    'every shown line is a whole line');
+  assert.ok(!summary.includes('will be destroyed'), 'the tail is cut');
+  assert.ok(summary.indexOf('</details>') > summary.indexOf('truncated'), 'notice sits before the close');
+  // Outputs come from the whole file, not the cut one.
+  assert.strictEqual(out.has_destroy, 'true');
+  assert.strictEqual(out.total, '2');
+  assert.strictEqual(out.counts, 'Plan: 0 to add, 1 to change, 1 to destroy.');
+});
+
+test('plan_summary_max_bytes lowers the cap', () => {
+  const plan = Array.from({ length: 50 }, (_, i) => `line ${i}\n`).join('');
+  const { summary } = run(plan, { PLAN_SUMMARY_MAX_BYTES: '40' });
+  assert.ok(summary.includes('truncated'));
+  assert.ok(summary.includes('line 0\n') && !summary.includes('line 49'));
+});
+
 if (failed) {
   console.error(`\n${failed} test(s) failed`);
   process.exit(1);
