@@ -21,7 +21,7 @@ Here are the required inputs for the workflow:
 | `comment_marker`    | Hidden marker identifying the sticky comment (sticky mode only) | `false` | derived from `environment` + `working_dir` |
 | `pr_number`         | PR to comment on; defaults to the triggering event's PR | `false` | `''` |
 | `plan_max_rows`     | Resource addresses to place in the `plan_changes` output; the job summary is unaffected | `false` | `20` |
-| `plan_summary_max_bytes` | Most bytes of the plan written to the job summary; a larger plan is cut at a whole line and the full plan stays in the job log. GitHub rejects a summary over 1 MiB | `false` | `900000` |
+| `plan_summary_max_bytes` | Most bytes of the plan written to the job summary; a larger plan is cut at a whole line and the full plan stays in the job log. GitHub rejects a summary over 1 MiB. Values above 1000000 are clamped, and a non-number falls back to the default | `false` | `900000` |
 
 ## Outputs
 

@@ -21,6 +21,16 @@ MAX_ROWS="${PLAN_MAX_ROWS:-20}"
 # approver would be sent to an empty summary. The default leaves headroom under 1048576 for the
 # heading, fences and notice.
 SUMMARY_MAX_BYTES="${PLAN_SUMMARY_MAX_BYTES:-900000}"
+# Clamp rather than trust the input: a value near 1 MiB leaves no room for the markup around the
+# plan, and a non-number would make the size test error out and skip the cap entirely.
+SUMMARY_CEILING=1000000
+if ! [[ "$SUMMARY_MAX_BYTES" =~ ^[0-9]+$ ]]; then
+  echo "plan_summary_max_bytes '${SUMMARY_MAX_BYTES}' is not a number, using 900000" >&2
+  SUMMARY_MAX_BYTES=900000
+elif [ "$SUMMARY_MAX_BYTES" -gt "$SUMMARY_CEILING" ]; then
+  echo "plan_summary_max_bytes ${SUMMARY_MAX_BYTES} exceeds ${SUMMARY_CEILING}, clamping" >&2
+  SUMMARY_MAX_BYTES=$SUMMARY_CEILING
+fi
 
 emit() { printf '%s\n' "$1" >> "${GITHUB_OUTPUT:-/dev/null}"; }
 
@@ -77,7 +87,10 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   truncated=false
   if [ "$total_bytes" -gt "$SUMMARY_MAX_BYTES" ]; then
     truncated=true
-    shown_file="${PLAN_OUT}.shown"
+    # mktemp creates it 0600: plan.sh's umask 077 does not reach this shell, and the copy holds
+    # unmasked attributes. Removed on exit so it never outlives the step.
+    shown_file=$(mktemp "${RUNNER_TEMP:-/tmp}/plan-shown.XXXXXX")
+    trap 'rm -f "$shown_file"' EXIT
     # Whole lines only, counted in bytes (C locale): a byte cut could split a UTF-8 character or
     # leave half a line that reads as a different plan. Outputs above were computed from the full
     # file, so the cut affects the rendering alone.

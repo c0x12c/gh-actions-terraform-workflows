@@ -48,7 +48,7 @@ function run(planOut, extraEnv = {}) {
       out[lines[i].slice(0, idx)] = lines[i].slice(idx + 1);
     }
   }
-  return { out, summary: fs.readFileSync(sumFile, 'utf8') };
+  return { out, summary: fs.readFileSync(sumFile, 'utf8'), dir };
 }
 
 let failed = 0;
@@ -246,6 +246,29 @@ test('plan_summary_max_bytes lowers the cap', () => {
   const { summary } = run(plan, { PLAN_SUMMARY_MAX_BYTES: '40' });
   assert.ok(summary.includes('truncated'));
   assert.ok(summary.includes('line 0\n') && !summary.includes('line 49'));
+});
+
+// A limit near 1 MiB leaves no room for the heading, fences and notice, so the summary is rejected
+// again. The script clamps to a ceiling instead of trusting the input.
+test('an oversized plan_summary_max_bytes is clamped below the 1 MiB limit', () => {
+  const plan = 'x'.repeat(99) + '\n';
+  const { summary } = run(plan.repeat(10600), { PLAN_SUMMARY_MAX_BYTES: '1048576' });
+  assert.ok(Buffer.byteLength(summary) < 1048576, `summary is ${Buffer.byteLength(summary)} bytes`);
+  assert.ok(summary.includes('truncated'));
+});
+
+test('a non-numeric plan_summary_max_bytes falls back to the default', () => {
+  const plan = 'y'.repeat(99) + '\n';
+  const { summary } = run(plan.repeat(12000), { PLAN_SUMMARY_MAX_BYTES: 'abc' });
+  assert.ok(summary.includes('truncated'), 'a bad value must not disable the cap');
+  assert.ok(Buffer.byteLength(summary) < 1048576);
+});
+
+// The cut copy carries unmasked attributes, so it must not outlive the step.
+test('the truncated copy is removed after the step', () => {
+  const plan = 'z'.repeat(99) + '\n';
+  const { dir } = run(plan.repeat(12000));
+  assert.deepStrictEqual(fs.readdirSync(dir).sort(), ['out.txt', 'plan.out', 'summary.md']);
 });
 
 if (failed) {
