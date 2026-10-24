@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
-## [Unreleased]
+## [v3.5.0] - 2026-10-23
 
 ### Added
 
@@ -14,9 +14,19 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
   The gate opens an issue with `trstringer/manual-approval` and waits for a member of `approver_teams`. It checks each team resolves to members first, because the action reads an unknown slug as a username and would wait out the window for nobody. It runs on `ubuntu-latest` with no permissions, so the container action cannot mint an OIDC token. It closes its issue on timeout or cancel, which the action does not do. A separate job sends the Slack ping with a link to the issue.
 
-  Plan and apply use `terraform-plan` and `terraform-apply` at v3.4.0. The apply job re-plans and stops if the summary line differs from the approved one, so drift during the wait is not applied unseen. `runs_on` puts them on a self-hosted runner. Leave `secret_filter` empty on a runner without Docker, since the decrypt action is a Docker action.
+  Plan and apply use `terraform-plan` and `terraform-apply` at v3.5.0. The apply job re-plans and stops if the summary line differs from the approved one, so drift during the wait is not applied unseen. `runs_on` puts them on a self-hosted runner. Leave `secret_filter` empty on a runner without Docker, since the decrypt action is a Docker action.
 
   The trigger, `concurrency` and the cancelled-run notice stay in the caller, because a called workflow cannot own them. The gate is advisory: a tag whose workflow drops the call applies unreviewed.
+
+### Fixed
+
+- **`terraform-plan` caps the job summary under GitHub's 1 MiB limit.** GitHub rejects a step summary over 1 MiB, and the upload fails without failing the job. The approval issue then sent approvers to an empty summary.
+
+  The summary now carries whole lines up to `plan_summary_max_bytes` (default 900000), closes the fence, and says how many bytes are shown, the total, and that the full plan is in the job log. The heading says the plan was truncated. The outputs (counts, total, has_destroy, changes) still come from the whole plan.
+
+- **The apply-blocked Slack notice fires when the apply step never started.** The condition tested `conclusion == 'skipped'`, but a step that never began can read as an empty string, so the notice stayed silent exactly when the apply was blocked.
+
+  It now tests `!= 'failure'`, which holds either way and matches the gate-failure notice. A failed apply still reports through the apply action itself.
 
 ## [v3.4.0] - 2026-09-15
 

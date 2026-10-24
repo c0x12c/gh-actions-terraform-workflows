@@ -107,7 +107,7 @@ jobs:
       # Writes the full plan to the job summary, which is where the approver reads it.
       - name: Terraform Plan
         id: plan
-        uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-plan@v3.4.0
+        uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-plan@v3.5.0
         with:
           aws_region: ${{ inputs.aws_region }}
           aws_role: ${{ secrets.aws_role }}
@@ -375,7 +375,7 @@ jobs:
       # be applied unseen. Two plans can share a summary line; a new destroy or count cannot.
       - name: Re-plan for comparison
         id: replan
-        uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-plan@v3.4.0
+        uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-plan@v3.5.0
         with:
           aws_region: ${{ inputs.aws_region }}
           aws_role: ${{ secrets.aws_role }}
@@ -401,7 +401,7 @@ jobs:
       # already decrypted this workspace. Sends its own success/failure notices.
       - name: Terraform Apply
         id: apply
-        uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-apply@v3.4.0
+        uses: c0x12c/gh-actions-terraform-workflows/actions/terraform-apply@v3.5.0
         with:
           aws_region: ${{ inputs.aws_region }}
           aws_role: ${{ secrets.aws_role }}
@@ -415,7 +415,7 @@ jobs:
       # The apply action reports its own failures; this covers a run stopped before it started.
       - name: Send Notification to Slack on apply blocked
         uses: c0x12c/gh-actions-slack-notify@v0.1.2
-        if: failure() && steps.apply.conclusion == 'skipped' && env.SLACK_WEBHOOK_URL != ''
+        if: failure() && steps.apply.conclusion != 'failure' && env.SLACK_WEBHOOK_URL != ''
         with:
           webhook_url: ${{ env.SLACK_WEBHOOK_URL }}
           title: '❌ *${{ github.event.repository.name }} - Terraform Apply BLOCKED in ${{ inputs.environment }} (${{ github.ref_name }})* - the plan changed since approval or could not be re-run, nothing applied'

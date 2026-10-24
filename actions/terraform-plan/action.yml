@@ -56,6 +56,13 @@ inputs:
       unaffected and always carries the full plan.
     required: false
     default: "20"
+  plan_summary_max_bytes:
+    description: >-
+      Most bytes of the rendered plan to write to the job summary. GitHub rejects a summary over
+      1 MiB and the upload fails without failing the job, so a larger plan is cut at a whole line
+      and the full plan stays in the job log. Outputs are computed from the whole plan.
+    required: false
+    default: "900000"
   pr_number:
     description: >-
       PR number to comment on. Defaults to the PR from the triggering event; set it
@@ -152,6 +159,7 @@ runs:
       shell: bash
       env:
         PLAN_MAX_ROWS: ${{ inputs.plan_max_rows }}
+        PLAN_SUMMARY_MAX_BYTES: ${{ inputs.plan_summary_max_bytes }}
       run: bash "${GITHUB_ACTION_PATH}/scripts/plan-summary.sh"
 
     # Comment when the plan actually ran (success or failure) - not after a pre-plan failure

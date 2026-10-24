@@ -188,5 +188,18 @@ test('close is a no-op when no open issue matches', () => {
   assert.match(r.out, /No open approval issue to close/);
 });
 
+test('apply-blocked notice fires on anything but a failed apply', () => {
+  const m = WORKFLOW.match(/- name: Send Notification to Slack on apply blocked\n[\s\S]*?\n\s+if: (.*)\n/);
+  assert.ok(m, 'step not found');
+  assert.ok(m[1].includes("steps.apply.conclusion != 'failure'"), m[1]);
+  assert.ok(!m[1].includes("== 'skipped'"), m[1]);
+});
+
+test('every plan and apply action ref is v3.5.0', () => {
+  const refs = WORKFLOW.match(/actions\/terraform-(plan|apply)@\S+/g) || [];
+  assert.strictEqual(refs.length, 3, refs.join(' '));
+  for (const r of refs) assert.ok(r.endsWith('@v3.5.0'), r);
+});
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
