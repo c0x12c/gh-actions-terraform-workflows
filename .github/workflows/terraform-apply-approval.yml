@@ -100,7 +100,7 @@ jobs:
 
     steps:
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
 
@@ -120,7 +120,7 @@ jobs:
 
       # Notify on no-op tags too, so silence on a release tag means something went wrong.
       - name: Send Notification to Slack on no changes
-        uses: c0x12c/gh-actions-slack-notify@v0.1.2
+        uses: c0x12c/gh-actions-slack-notify@v0.5.0
         if: startsWith(steps.plan.outputs.plan_counts, 'No changes.') && env.SLACK_WEBHOOK_URL != ''
         with:
           webhook_url: ${{ env.SLACK_WEBHOOK_URL }}
@@ -130,7 +130,7 @@ jobs:
       # A plan failure skips the downstream jobs rather than failing them, so their
       # failure() steps never fire. Without this, init/plan/credential failures are silent.
       - name: Send Notification to Slack on failure
-        uses: c0x12c/gh-actions-slack-notify@v0.1.2
+        uses: c0x12c/gh-actions-slack-notify@v0.5.0
         if: failure() && env.SLACK_WEBHOOK_URL != ''
         with:
           webhook_url: ${{ env.SLACK_WEBHOOK_URL }}
@@ -154,7 +154,7 @@ jobs:
       # The notify action reads the commit log out of the working tree.
       - name: Checkout source
         if: env.SLACK_WEBHOOK_URL != ''
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           fetch-depth: 3
@@ -332,7 +332,7 @@ jobs:
       # Reported apart from an apply failure: nothing ran, so "FAILED" would send someone
       # hunting for damage.
       - name: Send Notification to Slack on approval not granted
-        uses: c0x12c/gh-actions-slack-notify@v0.1.2
+        uses: c0x12c/gh-actions-slack-notify@v0.5.0
         if: failure() && steps.approval.conclusion == 'failure' && env.SLACK_WEBHOOK_URL != ''
         with:
           webhook_url: ${{ env.SLACK_WEBHOOK_URL }}
@@ -342,7 +342,7 @@ jobs:
       # Bad timeout, token mint or an unresolvable team: the gate never opened, which is a broken
       # gate rather than a refused apply.
       - name: Send Notification to Slack on gate failure
-        uses: c0x12c/gh-actions-slack-notify@v0.1.2
+        uses: c0x12c/gh-actions-slack-notify@v0.5.0
         if: failure() && steps.approval.conclusion != 'failure' && env.SLACK_WEBHOOK_URL != ''
         with:
           webhook_url: ${{ env.SLACK_WEBHOOK_URL }}
@@ -364,7 +364,7 @@ jobs:
       # Same SHA the plan job rendered. Depth 3 so the apply action's Slack notice can list the
       # commits being applied.
       - name: Checkout source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           fetch-depth: 3
@@ -414,7 +414,7 @@ jobs:
 
       # The apply action reports its own failures; this covers a run stopped before it started.
       - name: Send Notification to Slack on apply blocked
-        uses: c0x12c/gh-actions-slack-notify@v0.1.2
+        uses: c0x12c/gh-actions-slack-notify@v0.5.0
         if: failure() && steps.apply.conclusion != 'failure' && env.SLACK_WEBHOOK_URL != ''
         with:
           webhook_url: ${{ env.SLACK_WEBHOOK_URL }}
