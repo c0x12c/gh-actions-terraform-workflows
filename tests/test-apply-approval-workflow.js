@@ -91,6 +91,12 @@ test('apply refuses a re-plan that differs from the approved one', () => {
   assert.match(r.out, /plan changed since approval/);
 });
 
+test('a blocked apply notifies whether the apply step reads skipped or empty', () => {
+  const apply = job('terraform_apply');
+  assert.match(apply, /if: failure\(\) && steps\.apply\.conclusion != 'failure' && env\.SLACK_WEBHOOK_URL != ''/);
+  assert.doesNotMatch(apply, /steps\.apply\.conclusion == 'skipped'/);
+});
+
 test('the gate cannot mint an OIDC token and runs on a Docker-capable runner', () => {
   const gate = job('approval');
   assert.match(gate, /^    permissions: \{\}$/m);
